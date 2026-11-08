@@ -1,0 +1,23 @@
+name: ci
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  test:
+    name: ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    steps:
+      - uses: actions/checkout@v4
+      - name: configure
+        # The VS generator defaults to Win32. shm_win.cpp is Win64.
+        run: cmake -S . -B build -DCMAKE_BUILD_TYPE=Release ${{ matrix.os == 'windows-latest' && '-A x64' || '' }}
+      - name: build
+        run: cmake --build build --config Release
+      - name: test
+        run: ctest --test-dir build --output-on-failure -C Release
