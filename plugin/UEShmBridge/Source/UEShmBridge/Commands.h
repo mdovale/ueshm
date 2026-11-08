@@ -5,4 +5,6 @@
 class UWorld;
 
 // False after QUIT, once its ACK is on the reply ring.
-bool DispatchCommand(const Message& command, Ring& replies, UWorld* world);
+// DUMP writes positions at `bulk` before that reply.
+bool DispatchCommand(
+	const Message& command, Ring& replies, UWorld* world, unsigned char* bulk, std::uint32_t bulk_bytes);

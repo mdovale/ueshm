@@ -3,6 +3,7 @@
 #include "shm.h"
 
 #include <chrono>
+#include <cmath>
 #include <cstdint>
 #include <cstdio>
 #include <cstring>
@@ -43,7 +44,7 @@ struct Session {
 
 void Usage() {
 	std::fprintf(stderr,
-		"usage: uectl launch|ping|exec --engine <root> --project <uproject> [--map <map>]\n"
+		"usage: uectl launch|ping|demo|exec --engine <root> --project <uproject> [--map <map>]\n"
 		"       uectl exec <command> --engine <root> --project <uproject> [--map <map>]\n");
 }
 
@@ -91,7 +92,7 @@ bool Parse(int argc, char** argv, Options* opt) {
 		}
 		return !opt->exec.empty();
 	}
-	return extra.empty() && (opt->command == "launch" || opt->command == "ping");
+	return extra.empty() && (opt->command == "launch" || opt->command == "ping" || opt->command == "demo");
 }
 
 std::filesystem::path EditorPath(const std::filesystem::path& root) {
@@ -254,7 +255,98 @@ int main(int argc, char** argv) {
 		return 0;
 	}
 
-	if (opt.command == "ping") {
+	if (opt.command == "demo") {
+		constexpr std::uint32_t kCount = 1000;
+		constexpr float kSpacing = 100.f;
+		Message ping;
+		ping.type = kPing;
+		ping.id = next_id++;
+		ping.size = sizeof(PingPayload);
+		PingPayload nonce;
+		nonce.nonce = 0x55aa55aa55aa55aaull;
+		std::memcpy(ping.payload, &nonce, sizeof(nonce));
+		Message reply;
+		if (!Send(header, &session.process, commands, ping) ||
+			!Recv(header, &session.process, replies, ping.id, &reply) || reply.type != kPong ||
+			reply.size != sizeof(PingPayload)) {
+			return Fail("ping failed");
+		}
+		PingPayload got;
+		std::memcpy(&got, reply.payload, sizeof(got));
+		if (got.nonce != nonce.nonce) {
+			return Fail("ping nonce");
+		}
+
+		const char* console = "stat fps";
+		Message exec;
+		exec.type = kConsole;
+		exec.id = next_id++;
+		exec.size = static_cast<std::uint32_t>(std::strlen(console));
+		std::memcpy(exec.payload, console, exec.size);
+		if (!Send(header, &session.process, commands, exec) ||
+			!Recv(header, &session.process, replies, exec.id, &reply) || reply.type != kAck ||
+			reply.size != sizeof(AckPayload)) {
+			return Fail("exec failed");
+		}
+		AckPayload console_ack;
+		std::memcpy(&console_ack, reply.payload, sizeof(console_ack));
+		if (console_ack.value != 1u) {
+			return Fail("exec rejected");
+		}
+
+		Message spawn;
+		spawn.type = kSpawn;
+		spawn.id = next_id++;
+		spawn.size = sizeof(SpawnPayload);
+		SpawnPayload request;
+		request.count = kCount;
+		request.spacing = kSpacing;
+		std::memcpy(spawn.payload, &request, sizeof(request));
+		if (!Send(header, &session.process, commands, spawn) ||
+			!Recv(header, &session.process, replies, spawn.id, &reply) || reply.type != kAck ||
+			reply.size != sizeof(AckPayload)) {
+			return Fail("spawn failed");
+		}
+		AckPayload spawned;
+		std::memcpy(&spawned, reply.payload, sizeof(spawned));
+		if (spawned.value != kCount) {
+			std::fprintf(stderr, "spawned %u\n", spawned.value);
+			return 1;
+		}
+
+		Message dump;
+		dump.type = kDump;
+		dump.id = next_id++;
+		if (!Send(header, &session.process, commands, dump) ||
+			!Recv(header, &session.process, replies, dump.id, &reply) || reply.type != kDone ||
+			reply.size != sizeof(DonePayload)) {
+			return Fail("dump failed");
+		}
+		DonePayload done;
+		std::memcpy(&done, reply.payload, sizeof(done));
+		const std::uint32_t expect_bytes = 4u + kCount * 12u;
+		if (done.bytes != expect_bytes || done.bytes > header->bulk_bytes) {
+			return Fail("dump size");
+		}
+		const unsigned char* cursor = base + header->bulk_off;
+		std::uint32_t count = 0;
+		std::memcpy(&count, cursor, sizeof(count));
+		cursor += sizeof(count);
+		if (count != kCount) {
+			return Fail("dump count");
+		}
+		for (std::uint32_t i = 0; i < count; ++i) {
+			float xyz[3];
+			std::memcpy(xyz, cursor, sizeof(xyz));
+			cursor += sizeof(xyz);
+			const float want = static_cast<float>(i) * kSpacing;
+			if (std::fabs(xyz[0] - want) > 0.01f || xyz[1] != 0.f || xyz[2] != 0.f) {
+				std::fprintf(stderr, "actor %u at %g %g %g\n", i, xyz[0], xyz[1], xyz[2]);
+				return 1;
+			}
+		}
+		std::printf("spawned %u\n", spawned.value);
+	} else if (opt.command == "ping") {
 		Message msg;
 		msg.type = kPing;
 		msg.id = next_id++;

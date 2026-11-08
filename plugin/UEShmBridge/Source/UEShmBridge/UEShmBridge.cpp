@@ -97,7 +97,7 @@ private:
 			if (!Decode(buf, size, &command)) {
 				break;
 			}
-			if (!DispatchCommand(command, replies, world)) {
+			if (!DispatchCommand(command, replies, world, base + header->bulk_off, header->bulk_bytes)) {
 				break;
 			}
 		}
