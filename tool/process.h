@@ -15,6 +15,8 @@ public:
 
 	static Process Launch(const std::vector<std::string>& args);
 	int Wait();
+	// True once the process has exited. Leaves a running process alone.
+	bool TryWait(int* code);
 	void Terminate();
 
 	explicit operator bool() const { return handle_ != 0; }

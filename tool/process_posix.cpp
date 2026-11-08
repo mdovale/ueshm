@@ -56,6 +56,16 @@ Process Process::Launch(const std::vector<std::string>& args) {
 	return process;
 }
 
+int StatusCode(int status) {
+	if (WIFEXITED(status)) {
+		return WEXITSTATUS(status);
+	}
+	if (WIFSIGNALED(status)) {
+		return 128 + WTERMSIG(status);
+	}
+	return -1;
+}
+
 int Process::Wait() {
 	if (handle_ == 0) {
 		return -1;
@@ -66,13 +76,25 @@ int Process::Wait() {
 	if (waitpid(pid, &status, 0) < 0) {
 		return -1;
 	}
-	if (WIFEXITED(status)) {
-		return WEXITSTATUS(status);
+	return StatusCode(status);
+}
+
+bool Process::TryWait(int* code) {
+	if (handle_ == 0 || code == nullptr) {
+		return false;
 	}
-	if (WIFSIGNALED(status)) {
-		return 128 + WTERMSIG(status);
+	int status = 0;
+	const pid_t pid = static_cast<pid_t>(handle_);
+	const pid_t got = waitpid(pid, &status, WNOHANG);
+	if (got == 0) {
+		return false;
 	}
-	return -1;
+	if (got < 0) {
+		return false;
+	}
+	handle_ = 0;
+	*code = StatusCode(status);
+	return true;
 }
 
 void Process::Terminate() {

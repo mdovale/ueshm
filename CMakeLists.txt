@@ -33,6 +33,9 @@ endif()
 add_library(process ${PROCESS_SRC} tool/process.h)
 target_include_directories(process PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/tool)
 
+add_executable(uectl tool/main.cpp)
+target_link_libraries(uectl PRIVATE shm process)
+
 add_executable(shm_test tests/shm_test.cpp)
 target_link_libraries(shm_test PRIVATE shm process)
 

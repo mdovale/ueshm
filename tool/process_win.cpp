@@ -95,6 +95,26 @@ int Process::Wait() {
 	return static_cast<int>(code);
 }
 
+bool Process::TryWait(int* code) {
+	if (handle_ == 0 || code == nullptr) {
+		return false;
+	}
+	HANDLE process = reinterpret_cast<HANDLE>(handle_);
+	const DWORD wait = WaitForSingleObject(process, 0);
+	if (wait == WAIT_TIMEOUT) {
+		return false;
+	}
+	if (wait != WAIT_OBJECT_0) {
+		return false;
+	}
+	DWORD exit_code = 1;
+	GetExitCodeProcess(process, &exit_code);
+	CloseHandle(process);
+	handle_ = 0;
+	*code = static_cast<int>(exit_code);
+	return true;
+}
+
 void Process::Terminate() {
 	if (handle_ != 0) {
 		TerminateProcess(reinterpret_cast<HANDLE>(handle_), 1);
