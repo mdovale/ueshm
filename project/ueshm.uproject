@@ -1,0 +1,15 @@
+{
+	"FileVersion": 3,
+	"EngineAssociation": "5.8",
+	"Category": "",
+	"Description": "",
+	"AdditionalPluginDirectories": [
+		"../plugin"
+	],
+	"Plugins": [
+		{
+			"Name": "UEShmBridge",
+			"Enabled": true
+		}
+	]
+}
