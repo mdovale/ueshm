@@ -2,9 +2,7 @@
 
 C++ tool (`uectl`) that launches Unreal Engine headless and controls it through one shared-memory region. Targets macOS, Windows, and Linux. Pinned engine: UE 5.8.
 
-## Goal
-
-`uectl demo` must, on all three OSes, exit 0 after it:
+`uectl demo` exits 0 after it:
 
 1. launches UE headless and waits for the handshake
 2. sends `PING` and gets `PONG`
@@ -13,16 +11,52 @@ C++ tool (`uectl`) that launches Unreal Engine headless and controls it through 
 5. reads their 1000 positions back from the bulk area
 6. shuts UE down and removes the region
 
-Exit nonzero if the ready wait exceeds 60 s, a reply exceeds 10 s, the process crashes, `spawned != 1000`, or a position check fails.
+Exit nonzero if the ready wait exceeds 60 s, a reply exceeds 10 s, the process crashes, `spawned != 1000`, or a position check fails. The engine demo has been run on macOS. CI runs the C++ tests on Linux, macOS, and Windows. Those runners do not install the engine.
 
 ## Build and run
 
+CMake builds `uectl` and the tests. It does not build the plugin. Unreal does not compile a missing module under `-unattended`, so build the plugin once before any engine command.
+
+Tool and tests, from the repo root:
+
 ```
 cmake -S . -B build && cmake --build build && ctest --test-dir build
-uectl demo --engine <UE root> --project project/ueshm.uproject --map /Engine/Maps/Entry
 ```
 
-`ping`, `exec "<cmd>"`, and `launch` take the same `--engine`, `--project`, and `--map` flags. The tool generates the shm name. Default map is `/Engine/Maps/Entry`.
+On Windows the Visual Studio generator defaults to Win32, and `shm_win.cpp` is 64-bit. Pass `-A x64`, and pass the config through to the build and to `ctest`:
+
+```
+cmake -S . -B build -A x64
+cmake --build build --config Release
+ctest --test-dir build --output-on-failure -C Release
+```
+
+`uectl` is `./build/uectl`, or `build\Release\uectl.exe` on Windows. The five tests are `shm_two_process`, `ring_empty`, `ring_full`, `ring_wrap`, and `ring_stress`.
+
+Plugin, with `<UE>` as the engine root and an absolute path to the project:
+
+```
+"<UE>/Engine/Build/BatchFiles/Mac/Build.sh" UnrealEditor Mac Development -Project="<abs>/project/ueshm.uproject" -WaitMutex
+"<UE>/Engine/Build/BatchFiles/Linux/Build.sh" UnrealEditor Linux Development -Project="<abs>/project/ueshm.uproject" -WaitMutex
+"<UE>\Engine\Build\BatchFiles\Build.bat" UnrealEditor Win64 Development -Project="<abs>\project\ueshm.uproject" -WaitMutex
+```
+
+Run, again with an absolute project path. The editor resolves a relative one from its own binary directory.
+
+```
+./build/uectl demo --engine "<UE>" --project "<abs>/project/ueshm.uproject"
+./build/uectl ping --engine "<UE>" --project "<abs>/project/ueshm.uproject"
+./build/uectl exec "stat fps" --engine "<UE>" --project "<abs>/project/ueshm.uproject"
+./build/uectl launch --engine "<UE>" --project "<abs>/project/ueshm.uproject"
+```
+
+`--map` defaults to `/Engine/Maps/Entry`. `demo` prints `spawned 1000`. `ping` prints `pong <nonce>`. `exec` prints `ok 1`. `launch` prints the shared-memory name and waits until the process exits. The engine log contains `ueshm ready`.
+
+`--engine` is the directory that contains one of these files. The tool launches the first that exists:
+
+- `Engine/Binaries/Mac/UnrealEditor-Cmd`
+- `Engine/Binaries/Win64/UnrealEditor-Cmd.exe`
+- `Engine/Binaries/Linux/UnrealEditor-Cmd`
 
 ## Architecture
 
@@ -54,7 +88,7 @@ ueshm/
 │  └─ shm_win.cpp              # Windows
 ├─ tool/
 │  ├─ main.cpp                 # uectl: launch, demo, ping, exec
-│  ├─ process.h                # Process::Launch/Wait/Terminate
+│  ├─ process.h                # Process::Launch/Wait/TryWait/Terminate
 │  ├─ process_posix.cpp
 │  └─ process_win.cpp
 ├─ project/ueshm.uproject      # content-only; enables UEShmBridge
@@ -63,9 +97,10 @@ ueshm/
 │  └─ Source/UEShmBridge/
 │     ├─ UEShmBridge.Build.cs  # include ../../../../common; compile one shm cpp
 │     ├─ UEShmBridge.cpp       # module: open region, register ticker
+│     ├─ Commands.h
 │     └─ Commands.cpp          # command handlers
-├─ tests/                      # ctest: shm two-process, ring wrap/full/empty
-└─ .github/workflows/ci.yml    # matrix: ubuntu, macos, windows
+├─ tests/                      # shm_test, ring_test
+└─ .github/workflows/ci.yml    # ubuntu, macos, windows; ctest only
 ```
 
 `project/ueshm.uproject` is content-only and contains:
@@ -75,18 +110,15 @@ ueshm/
 "Plugins": [{ "Name": "UEShmBridge", "Enabled": true }]
 ```
 
-CMake compiles `common/` for `uectl` and the tests. The module cpp includes `shm_posix.cpp` or `shm_win.cpp`, so Unreal Build Tool compiles that same file. One source copy, two builds.
+CMake compiles `common/` for `uectl` and the tests. The module cpp includes `shm_posix.cpp` or `shm_win.cpp`, so Unreal Build Tool compiles that same file. One source copy, two builds. The module include path is `common/` at the repo root. Dependencies are Core, CoreUObject, and Engine.
 
 ## Portability rules
 
-- Platform `#ifdef`s live only in `shm_*.cpp` and `process_*.cpp`. Everything else is plain C++17.
+- Platform `#ifdef`s live only in `shm_*.cpp` and `process_*.cpp`. Everything else is plain C++17. The editor path is chosen by which binary file exists.
 - Shared structs: fixed-width ints, explicit alignment, little-endian, no pointers, no STL, no exceptions. Pin the layout with `static_assert(sizeof/offsetof)`.
 - Atomics: `std::atomic<uint32_t>`, with `static_assert(is_always_lock_free)`. Producer releases, consumer acquires.
 - Paths via `std::filesystem`. Never hard-code separators.
-- `--engine <root>` selects the binary:
-  - macOS: `Engine/Binaries/Mac/UnrealEditor-Cmd`
-  - Windows: `Engine\Binaries\Win64\UnrealEditor-Cmd.exe`
-  - Linux: `Engine/Binaries/Linux/UnrealEditor-Cmd`
+- Exceptions are off (`-fno-exceptions`, or MSVC `/EHs-c- /D_HAS_EXCEPTIONS=0`).
 
 ## Shared region (default 16 MiB)
 
@@ -106,11 +138,11 @@ Header fields, then pad to 128 bytes:
 | `rsp_off`, `rsp_bytes` | `u32` | reply ring |
 | `bulk_off`, `bulk_bytes` | `u32` | bulk area |
 
-`cmd_off` and `rsp_off` point at that ring's `head`. `cmd_bytes` and `rsp_bytes` are the data capacity, 65536. `bulk_off` follows the reply ring.
+`cmd_off` and `rsp_off` point at that ring's `head`. `cmd_bytes` and `rsp_bytes` are the data capacity, 65536. `bulk_off` follows the reply ring. With the default 16 MiB region those offsets are 128, 65920, and 131712.
 
 Each ring is `head` padded to 128 bytes, `tail` padded to 128 bytes, then 64 KiB of data. `head` is the producer byte offset, `tail` the consumer byte offset. Both are monotonic `uint32_t`; subtract them unsigned. The data address is `index & 65535`. Empty when `head == tail`. A record is never split: if the bytes left at the end are shorter than the record, that tail is skipped and the record is written at offset 0. Full when the next record, including a skipped tail, would push `head - tail` past 65536.
 
-UE writes each dump at the start of the bulk area. The tool reads bulk only after the matching reply.
+UE writes each dump at the start of the bulk area, then pushes `DONE`. The tool reads bulk only after the matching reply.
 
 ## Wire protocol
 
@@ -130,52 +162,37 @@ Each entry is a 16-byte prefix, the payload, then pad to 8 bytes:
 
 `CONSOLE` calls `GEngine->Exec` on the game world. `ok` is 1 when that returns true. `demo` sends `stat fps`.
 
-`SPAWN` spawns into that world, in order. Actor `i` is a movable `AStaticMeshActor` with no mesh at world position `(i * spacing, 0, 0)`. `demo` uses `count = 1000` and `spacing = 100` (cm).
+`SPAWN` spawns into that world, in order. Actor `i` is a movable `AStaticMeshActor` with no mesh at world position `(i * spacing, 0, 0)`. The actor is spawned at the origin, the mesh component is set movable, then the location is applied. A static component would ignore the location. Collision handling is `AlwaysSpawn`. Count is capped to what the bulk area can hold, `(bulk_bytes - 4) / 12`. A later `SPAWN` replaces the previous actors. `demo` uses `count = 1000` and `spacing = 100` (cm).
 
-`DUMP` writes `u32 count`, then `count × 3 × f32` positions in spawn order. `DONE.bytes` equals `4 + count * 12`. The tool checks `|x - i * spacing| <= 0.01` and `y == z == 0`.
+`DUMP` writes `u32 count`, then `count × 3 × f32` positions in spawn order. `DONE.bytes` equals `4 + count * 12`. The tool checks `|x - i * spacing| <= 0.01` and `y == z == 0`. A dump that does not fit in the bulk area gets `ERR`.
 
-`QUIT` pushes `ACK`, then calls `FPlatformMisc::RequestExit(false)`.
+`QUIT` pushes `ACK`, then calls `FPlatformMisc::RequestExit(false)`. The handler returns after that, and the ticker stops draining.
 
 ## Components
 
 **`common/shm`**: `ShmRegion::Create(name, size)`, `Open(name)`, `Data()`, `Size()`. The logical name is `ueshm-<8 hex>`. POSIX object is `/ueshm-XXXXXXXX`. Windows mapping is `Local\ueshm-XXXXXXXX`. Destructor unmaps. The creator also removes the object.
 - POSIX: `shm_unlink` the stale name, then `shm_open` (`O_CREAT|O_EXCL`), `ftruncate`, `mmap`. Unlink again after the child is gone.
-- Windows: `CreateFileMappingA` + `MapViewOfFile`. Close the handle after the child is gone.
+- Windows: `CreateFileMappingA` + `MapViewOfFile`. `SetLastError(0)` before create so `ERROR_ALREADY_EXISTS` is meaningful. Open reads the size with `NtQuerySection` (`SectionBasicInformation`) and falls back to `VirtualQuery`. Close the handle after the child is gone. `shm_win.cpp` is Win64 only.
 
-**`uectl`**: creates the region, then launches:
+**`uectl`**: creates the region, calls `InitRegion`, then launches:
 
 ```
 UnrealEditor-Cmd <proj>.uproject <map> -game -nullrhi -unattended -nosplash -nopause -stdout -ShmName=<logical name>
 ```
 
-`launch` waits for `ue_ready`, prints the name, and waits until the process exits. `ping`, `exec`, and `demo` wait for `ue_ready`, run their requests, and send `QUIT`. After the process exits, the tool sets `state = closing` and removes the region. On timeout or crash it terminates the child and does the same cleanup.
+The project path passed to the editor is absolute. `launch` waits for `ue_ready`, prints the name, and waits until the process exits. `ping`, `exec`, and `demo` wait for `ue_ready`, run their requests, and send `QUIT`. `demo` checks the ping nonce, requires `stat fps` to return `ok` 1, then runs the spawn and the position check. After `QUIT` the tool waits up to 60 s for exit code 0. It then sets `state = closing` and removes the region. On timeout or crash it terminates the child and does the same cleanup. If the child is still alive when `uectl` exits, the session kills it first.
 
-**`UEShmBridge`**: `StartupModule` reads `-ShmName`, opens the region, and registers an `FTSTicker`. It sets `state = ue_ready` on the first tick where the game `UWorld` exists. Each tick bumps `ue_heartbeat`, drains at most 64 commands, runs them on the game thread, and pushes replies.
+**`UEShmBridge`**: `StartupModule` reads `-ShmName`. With no name, the module returns and registers no ticker. Otherwise it opens the region and registers an `FTSTicker`. It sets `state = ue_ready` on the first tick where a `UWorld` of type Game or PIE exists, and logs `ueshm ready` once. Each tick bumps `ue_heartbeat` and drains at most 64 commands on the game thread.
 
-**Tests**: one binary. The parent creates the region and execs the same binary with the name. Ring wrap, full, and empty run in-process on two threads. CI is cmake and `ctest` on all three runners. The UE run is manual.
-
-## Milestones
-
-Each milestone builds and can be tested alone.
-
-0. **Spike (UE only).** The content-only project and an empty plugin. A ticker logs a line under the launch command, on macOS first.
-1. **shm lib.** Two-process test passes on all three CI runners.
-2. **Rings + protocol.** Wrap, full, empty, and a two-thread stress run.
-3. **Handshake + PING + CONSOLE** against UE 5.8.
-4. **SPAWN + DUMP.** The 1000-actor demo, with the position check above.
-5. **CI.** Matrix build and `ctest` on all three OSes. The engine run stays manual.
+**Tests**: `shm_test` is the two-process test. The parent creates a 65536-byte region, writes a pattern, execs the same binary as `child <name>`, checks the child's write, and creates the same name again after both sides have closed it. `ring_test` takes `empty`, `full`, `wrap`, or `stress`. The stress run is 10000 messages on two threads. CI is cmake and `ctest` on all three runners. The engine run stays manual.
 
 ## Gotchas
 
-- **macOS:** shm names are limited to about 31 chars including the slash. `/ueshm-` plus 8 hex fits. `sem_init` is unsupported. `ftruncate` works once per object.
-- **Windows:** the mapping disappears with the last handle, so keep the tool's handle open until UE has closed.
-- **Linux:** containers have a small `/dev/shm` by default; use `--shm-size` in Docker. Older glibc needs `-lrt`.
-- **Rendering:** `-nullrhi` disables the renderer. The demo spawns actors with no mesh. A rendered run needs `-RenderOffscreen` and a GPU, per platform.
+- **Project path:** pass an absolute `.uproject`. A relative path is resolved from `Engine/Binaries/<platform>/`, not from the shell's current directory.
+- **macOS plugin binary:** a relink can write `libUnrealEditor-UEShmBridge-NNNN.dylib` and leave `project/Binaries/Mac/UnrealEditor.modules` pointing at an older suffix. The editor then loads the old plugin. Delete `UnrealEditor.modules` and `UnrealEditor.target` in that directory and rerun the plugin build so the manifest names the new dylib.
+- **macOS shm:** names are limited to about 31 chars including the slash. `/ueshm-` plus 8 hex fits. `sem_init` is unsupported. `ftruncate` works once per object.
+- **Windows:** the mapping disappears with the last handle, so keep the tool's handle open until UE has closed. CMake needs `-A x64`.
+- **Linux:** containers have a small `/dev/shm` by default; use `--shm-size` in Docker. Older glibc needs `-lrt`. CMake links `rt` when that library is present.
+- **Rendering:** `-nullrhi` disables the renderer. The demo spawns actors with no mesh. A rendered run needs `-RenderOffscreen` and a GPU, per platform. On macOS, `-nullrhi` plus this spawn needed no extra flags.
 - **Commandlets:** they exit when finished, and some plugins do not start in them. The demo launches game mode.
 - **Stale regions:** a crashed run can leave a POSIX object behind. Unlink-before-create clears it.
-
-## Verify early (not confirmed)
-
-- The UE 5.8 binary paths above match the install.
-- `UnrealEditor-Cmd ... -game -nullrhi` keeps ticking and spawns actors on 5.8. Milestone 0 covers the ticking half.
-- `-nullrhi` plus actor spawn needs no extra flags on all three platforms.
