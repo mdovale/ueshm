@@ -31,7 +31,8 @@ Testing/
 _deps/
 .cache/
 
-# C and C++ build products
+# Build products
+*.pdf
 *.o
 *.obj
 *.a
