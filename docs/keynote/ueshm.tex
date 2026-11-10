@@ -1,427 +1,512 @@
 % !TEX program = lualatex
-% latexmk -lualatex docs/ueshm.tex
+% latexmk -lualatex -outdir=docs/keynote -auxdir=build/keynote docs/keynote/ueshm.tex
 \documentclass[aspectratio=169,11pt]{beamer}
 
 \usefonttheme{professionalfonts}
 \usepackage{fontspec}
 \defaultfontfeatures{Ligatures=TeX,Renderer=HarfBuzz}
-\setsansfont{Avenir Next}[
-  UprightFont={Avenir Next},
-  BoldFont={Avenir Next Demi Bold},
-  ItalicFont={Avenir Next Italic},
-  BoldItalicFont={Avenir Next Demi Bold Italic},
+\setsansfont{IBMPlexSans}[
+  Extension=.otf,
+  UprightFont=*-Regular,
+  BoldFont=*-SemiBold,
+  ItalicFont=*-Italic,
+  BoldItalicFont=*-SemiBoldItalic,
 ]
-\setmainfont{Avenir Next}[
-  UprightFont={Avenir Next},
-  BoldFont={Avenir Next Demi Bold},
-  ItalicFont={Avenir Next Italic},
-  BoldItalicFont={Avenir Next Demi Bold Italic},
+\setmainfont{IBMPlexSans}[
+  Extension=.otf,
+  UprightFont=*-Regular,
+  BoldFont=*-SemiBold,
+  ItalicFont=*-Italic,
+  BoldItalicFont=*-SemiBoldItalic,
 ]
-\setmonofont{Menlo}[Scale=0.86]
+\setmonofont{IBMPlexMono}[
+  Extension=.otf,
+  UprightFont=*-Regular,
+  BoldFont=*-SemiBold,
+  Scale=0.92,
+]
 \renewcommand{\familydefault}{\sfdefault}
+\frenchspacing
+\hyphenpenalty=10000
+\exhyphenpenalty=10000
 
 \usepackage{microtype}
 \usepackage{tikz}
-\usetikzlibrary{arrows.meta,calc}
+\usetikzlibrary{arrows.meta,calc,patterns.meta}
 
-\definecolor{ink}{HTML}{1B2430}
-\definecolor{muted}{HTML}{5C6B78}
-\definecolor{accent}{HTML}{C4622D}
-\definecolor{navy}{HTML}{17344F}
-\definecolor{navyfill}{HTML}{E6EEF6}
-\definecolor{eng}{HTML}{1A5C49}
-\definecolor{engfill}{HTML}{E3F2EC}
-\definecolor{hdrfill}{HTML}{E7EDF3}
-\definecolor{cmdfill}{HTML}{D5E5F4}
-\definecolor{rspfill}{HTML}{D4F0E4}
-\definecolor{bulkfill}{HTML}{F8EFE3}
-\definecolor{skipfill}{HTML}{E7E2DA}
-\definecolor{cardline}{HTML}{D9D5CE}
+\definecolor{ink}{HTML}{16202A}
+\definecolor{muted}{HTML}{56616C}
+\definecolor{faint}{HTML}{8C969F}
+\definecolor{rule}{HTML}{D8DDE2}
+\definecolor{night}{HTML}{111922}
+\definecolor{accent}{HTML}{C2562A}
+\definecolor{accentlt}{HTML}{E8946A}
+\definecolor{tool}{HTML}{1F4E79}
+\definecolor{eng}{HTML}{1D6B50}
+\definecolor{seghdr}{HTML}{E2E6EA}
+\definecolor{segcmd}{HTML}{CFE0F1}
+\definecolor{segrsp}{HTML}{CDEADC}
+\definecolor{segbulk}{HTML}{F0E3CC}
+\definecolor{bulkdark}{HTML}{7A6440}
+\definecolor{fsize}{HTML}{D3DCE6}
+\definecolor{ftype}{HTML}{F8D9C4}
+\definecolor{fpad}{HTML}{E9EAEC}
+\definecolor{fade}{HTML}{F3F4F6}
+\definecolor{fid}{HTML}{E3DDF2}
+\definecolor{fpay}{HTML}{FAEFC8}
+\definecolor{record}{HTML}{D3DAE2}
 
-\newcommand{\diagramfont}{\fontsize{12}{15}\selectfont}
-\newcommand{\minorfont}{\fontsize{10}{13}\selectfont}
-\newcommand{\microfont}{\fontsize{9}{11}\selectfont}
+\newcommand{\titlefont}{\fontsize{20}{24}\selectfont\bfseries}
+\newcommand{\leadfont}{\fontsize{10.5}{14.5}\selectfont}
+\newcommand{\kickerfont}{\fontsize{7.5}{9}\selectfont\bfseries\addfontfeatures{LetterSpace=12}}
+\newcommand{\cardfont}{\fontsize{11}{13}\selectfont\bfseries}
+\newcommand{\labelfont}{\fontsize{9}{11}\selectfont\bfseries}
+\newcommand{\cellfont}{\fontsize{8.5}{10}\selectfont\bfseries}
+\newcommand{\bodyfont}{\fontsize{8.5}{11.5}\selectfont}
+\newcommand{\smallfont}{\fontsize{7.5}{9.5}\selectfont}
+\newcommand{\tinyfont}{\fontsize{7}{8.5}\selectfont}
 
 \tikzset{
-  every node/.style={font=\diagramfont, text=ink, inner sep=2pt, align=center},
   every picture/.style={line cap=round, line join=round, x=1cm, y=1cm},
-  stealth/.style={-{Stealth[length=2.15mm,width=1.7mm]}, line width=0.95pt},
-  clock/.pic={
-    \draw[line width=0.9pt] (0,0) circle[radius=0.28];
-    \fill (0,0) circle[radius=0.042];
-    \draw[line width=0.75pt] (0,0) -- (90:0.175);
-    \draw[line width=0.75pt] (0,0) -- (30:0.12);
-  },
+  every node/.style={inner sep=0pt, text=ink},
+  arr/.style={-{Stealth[length=2mm,width=1.6mm]}, line width=0.8pt},
+  hatch/.style={pattern={Lines[angle=45,distance=2.4pt,line width=0.45pt]}, pattern color=faint!70},
+  sep/.style={white, line width=1.6pt},
+  tag/.style={font=\smallfont, text=muted, fill=white, inner xsep=2pt, inner ysep=1.5pt},
 }
 
-% Schematic 16 MiB map. Fractions are not the real sizes.
-% Leaves coordinates b0..b4 at the boundaries and hc, cc, rc, uc at the centers.
-\newcommand{\MemoryMap}[2]{%
-  \pgfmathsetmacro{\xa}{0.120*#1}%
-  \pgfmathsetmacro{\xb}{0.362*#1}%
-  \pgfmathsetmacro{\xc}{0.604*#1}%
-  \begin{scope}
-    \clip[rounded corners=3pt] (0,0) rectangle (#1,#2);
-    \fill[hdrfill] (0,0) rectangle (\xa,#2);
-    \fill[cmdfill] (\xa,0) rectangle (\xb,#2);
-    \fill[rspfill] (\xb,0) rectangle (\xc,#2);
-    \fill[bulkfill] (\xc,0) rectangle (#1,#2);
-    \draw[white, line width=1.8pt] (\xa,0) -- (\xa,#2);
-    \draw[white, line width=1.8pt] (\xb,0) -- (\xb,#2);
-    \draw[white, line width=1.8pt] (\xc,0) -- (\xc,#2);
-  \end{scope}
-  \draw[ink!30, line width=0.8pt, rounded corners=3pt] (0,0) rectangle (#1,#2);
-  \coordinate (b0) at (0,0);
-  \coordinate (b1) at (\xa,0);
-  \coordinate (b2) at (\xb,0);
-  \coordinate (b3) at (\xc,0);
-  \coordinate (b4) at (#1,0);
-  \coordinate (hc) at ({0.5*\xa},{0.5*#2});
-  \coordinate (cc) at ({0.5*\xa+0.5*\xb},{0.5*#2});
-  \coordinate (rc) at ({0.5*\xb+0.5*\xc},{0.5*#2});
-  \coordinate (uc) at ({0.5*\xc+0.5*#1},{0.5*#2});
-}
-
-\setbeamercolor{normal text}{fg=ink,bg=white}
-\setbeamercolor{background canvas}{bg=white}
-\setbeamercolor{frametitle}{fg=ink,bg=white}
-\setbeamercolor{framesubtitle}{fg=muted}
-\setbeamerfont{frametitle}{series=\bfseries,size*={17}{20}}
-\setbeamerfont{itemize/enumerate body}{size*={11}{13.5}}
-\setbeamerfont{itemize/enumerate item}{size*={11}{13.5}}
-\setbeamercolor{itemize item}{fg=muted}
-\setbeamertemplate{itemize item}{\scriptsize\textbullet}
 \setbeamertemplate{navigation symbols}{}
-\setbeamersize{text margin left=10mm, text margin right=10mm}
-
-\setbeamertemplate{frametitle}{%
-  \vspace*{1.8mm}%
-  \begin{beamercolorbox}[wd=\paperwidth,leftskip=10mm,rightskip=10mm,sep=0pt]{frametitle}
-    \usebeamerfont{frametitle}\insertframetitle\hfill
-    {\microfont\color{muted}\insertframenumber\ /\ \inserttotalframenumber}\par
-    \vspace{1.1mm}%
-    {\color{accent}\rule{18mm}{1.15pt}}\par
-  \end{beamercolorbox}%
-  \vspace{1.4mm}%
-}
-
-\setbeamertemplate{footline}{}
-
-\newcommand{\points}[1]{%
-  \begingroup
-  \setlength{\leftmargini}{1.05em}%
-  \begin{itemize}\setlength\itemsep{0.9mm}\setlength\parsep{0pt}\setlength\topsep{0.4mm}%
-    #1%
-  \end{itemize}%
-  \endgroup
-  \vspace{1.6mm}%
-}
-
+\setbeamercolor{background canvas}{bg=white}
 \hypersetup{hidelinks,pdftitle={ueshm}}
+
+% Everything is placed in page coordinates: (0,0) bottom left, (16,9) top right.
+\newenvironment{page}{%
+  \begin{tikzpicture}[remember picture, overlay]
+  \begin{scope}[shift={(current page.south west)}]%
+}{%
+  \end{scope}
+  \end{tikzpicture}%
+}
+
+% #1 kicker, #2 title, #3 lead
+\newcommand{\Chrome}[3]{%
+  \node[anchor=base west, font=\kickerfont, text=accent] at (1.0,8.2) {#1};
+  \node[anchor=base west, font=\titlefont] (title) at (1.0,7.45) {#2};
+  \node[anchor=north west, font=\leadfont, text=muted, text width=13.4cm, align=left]
+    at (1.0,7.0) {#3};
+  \node[anchor=base west, font=\tinyfont, text=faint] at (1.0,0.4) {ueshm};
+  \node[anchor=base east, font=\tinyfont, text=faint] at (15.0,0.4)
+    {\insertframenumber\ / \inserttotalframenumber};
+}
+
+% #1,#2 lower left, #3,#4 upper right, #5 color, #6 name, #7 role, #8 items
+\newcommand{\Card}[8]{%
+  \begin{scope}
+    \clip[rounded corners=3pt] (#1,#2) rectangle (#3,#4);
+    \fill[white] (#1,#2) rectangle (#3,#4);
+    \fill[#5] (#1,{#4-0.07}) rectangle (#3,#4);
+  \end{scope}
+  \draw[rule, line width=0.6pt, rounded corners=3pt] (#1,#2) rectangle (#3,#4);
+  \node[anchor=base west, font=\cardfont, text=#5] at ({#1+0.3},{#4-0.5}) {#6};
+  \node[anchor=base west, font=\smallfont, text=muted] at ({#1+0.3},{#4-0.8}) {#7};
+  \pgfmathsetlengthmacro{\cardw}{(#3-#1-0.55)*1cm}%
+  \node[anchor=north west, font=\bodyfont, text width=\cardw, align=left]
+    at ({#1+0.3},{#4-1.05}) {#8};
+}
+\newcommand{\itm}[1]{%
+  \hangindent=0.85em\hangafter=1\noindent
+  \makebox[0.85em][l]{\textcolor{faint}{\textbullet}}#1\par\vspace{2.2pt}}
+% Inline legend swatch.
+\newcommand{\key}[1]{\textcolor{#1}{\rule[-0.15ex]{1.5ex}{1.5ex}}\hspace{0.45em}}
+
+% Two-line label centered at (#1,#2).
+\newcommand{\Two}[4]{%
+  \node[anchor=base, font=\cellfont] at (#1,{#2+0.05}) {#3};
+  \node[anchor=base, font=\tinyfont, text=muted] at (#1,{#2-0.22}) {#4};
+}
+
+% Hex byte cell: #1 x, #2 y bottom, #3 fill, #4 text color, #5 byte
+\newcommand{\Hex}[5]{%
+  \fill[#3] (#1,#2) rectangle ({#1+0.46},{#2+0.4});
+  \node[anchor=base, font=\smallfont\ttfamily, text=#4] at ({#1+0.23},{#2+0.13}) {#5};
+}
 
 \begin{document}
 
-\begin{frame}
-  \frametitle{Shared region}
-  \points{%
-    \item \texttt{uectl} creates the 16 MiB region and the editor process.
-    \item \texttt{UEShmBridge} opens that name, passed as \texttt{-ShmName}.
-    \item Both sides poll atomics. The region has no lock.%
-  }
+% ---------------------------------------------------------------- title
+\begin{frame}[plain,noframenumbering]
+\begin{page}
+  \fill[night] (0,0) rectangle (16,9);
+  \node[anchor=base west, font=\kickerfont, text=accentlt] at (1.2,6.75)
+    {UNREAL ENGINE 5.8\quad\textperiodcentered\quad SHARED MEMORY};
+  \node[anchor=base west, font=\fontsize{58}{60}\selectfont\bfseries, text=white]
+    at (1.12,4.95) {ueshm};
+  \node[anchor=north west, font=\fontsize{13}{17.5}\selectfont, text=white!72!night,
+        text width=12.6cm, align=left] at (1.2,4.35)
+    {A command-line tool drives a headless Unreal Engine process
+     through one named shared-memory region.};
 
-  \noindent\begin{tikzpicture}
-    \useasboundingbox (0,0) rectangle (14.00,4.52);
-    \draw[navy, fill=navyfill, line width=0.9pt, rounded corners=3pt]
-      (0,2.28) rectangle (6.55,4.52);
-    \draw[eng, fill=engfill, line width=0.9pt, rounded corners=3pt]
-      (7.45,2.28) rectangle (14.00,4.52);
-
-    \node[anchor=north west, font=\fontsize{14}{17}\selectfont\bfseries, text=navy, align=left]
-      at (0.32,4.28) {uectl};
-    \node[anchor=north west, align=left, font=\minorfont] at (0.32,3.74)
-      {\texttt{ShmRegion::Create}, 16 MiB};
-    \node[anchor=north west, align=left, font=\minorfont] at (0.32,3.26)
-      {header, then release-store \texttt{magic}};
-    \node[anchor=north west, align=left, font=\minorfont] at (0.32,2.78)
-      {launch \texttt{UnrealEditor-Cmd}};
-
-    \node[anchor=north west, font=\fontsize{14}{17}\selectfont\bfseries, text=eng, align=left]
-      at (7.77,4.28) {UEShmBridge};
-    \node[anchor=north west, align=left, font=\minorfont] at (7.77,3.74)
-      {\texttt{ShmRegion::Open}};
-    \node[anchor=north west, align=left, font=\minorfont] at (7.77,3.26)
-      {wait for \texttt{magic} and version 1};
-    \node[anchor=north west, align=left, font=\minorfont] at (7.77,2.78)
-      {\texttt{FTSTicker}, at most 64 commands};
-
-    \draw[stealth, navy] (3.28,2.28) -- (3.28,1.72);
-    \draw[stealth, eng] (10.72,2.28) -- (10.72,1.72);
-    \node[font=\microfont\bfseries, text=navy, anchor=west, inner sep=1.5pt] at (3.48,2.00) {create};
-    \node[font=\microfont\bfseries, text=eng, anchor=east, inner sep=1.5pt] at (10.52,2.00) {open};
-
-    \begin{scope}[shift={(0,0.72)}]
-      \MemoryMap{14.00}{0.78}
-      \node[font=\diagramfont\bfseries] at (hc) {header};
-      \node[font=\diagramfont\bfseries] at (cc) {commands};
-      \node[font=\diagramfont\bfseries] at (rc) {replies};
-      \node[font=\diagramfont\bfseries] at (uc) {bulk};
-    \end{scope}
-
-    \node[font=\microfont, text=muted] at (7.00,0.42)
-      {POSIX \texttt{/ueshm-a1b2c3d4}
-       \enspace{\color{accent}\textperiodcentered}\enspace
-       Windows \texttt{Local\textbackslash ueshm-a1b2c3d4}};
-    \node[font=\microfont] at (7.00,0.10)
-      {\texttt{UnrealEditor-Cmd -game -nullrhi -unattended -ShmName=ueshm-a1b2c3d4}};
-  \end{tikzpicture}
+  \begin{scope}
+    \clip[rounded corners=3pt] (1.2,1.95) rectangle (14.8,2.45);
+    \fill[white!26!night] (1.2,1.95) rectangle (2.7,2.45);
+    \fill[tool!88!night] (2.7,1.95) rectangle (5.6,2.45);
+    \fill[eng!88!night] (5.6,1.95) rectangle (8.5,2.45);
+    \fill[bulkdark] (8.5,1.95) rectangle (14.8,2.45);
+    \draw[night, line width=1.6pt] (2.7,1.95) -- (2.7,2.45) (5.6,1.95) -- (5.6,2.45) (8.5,1.95) -- (8.5,2.45);
+  \end{scope}
+  \foreach \x/\t in {1.95/header, 4.15/command ring, 7.05/reply ring, 11.65/bulk}
+    \node[anchor=base, font=\smallfont\bfseries, text=white] at (\x,2.13) {\t};
+  \foreach \x/\t/\a in {1.2/0/base west, 2.7/128/base, 5.6/65920/base, 8.5/131712/base, 14.8/16777216/base east}
+    \node[anchor=\a, font=\tinyfont\ttfamily, text=white!50!night] at (\x,1.63) {\t};
+  \node[anchor=base west, font=\smallfont, text=white!50!night] at (1.2,0.95)
+    {\texttt{uectl}, host tool\quad\textperiodcentered\quad
+     \texttt{UEShmBridge}, engine plugin\quad\textperiodcentered\quad
+     protocol version 1};
+\end{page}
 \end{frame}
 
-\begin{frame}
-  \frametitle{Region layout}
-  \points{%
-    \item Widths are schematic. Offsets are bytes. 16 MiB is 16777216.
-    \item \texttt{magic} \texttt{0x48534555}, written last. version 1. state 0, 1, or 2.
-    \item Heartbeats on each poll and tick. Acquire the counter before reading.%
+% ---------------------------------------------------------------- 1
+\begin{frame}[plain]
+\begin{page}
+  \Chrome{01\quad ARCHITECTURE}{Shared region}
+    {\texttt{uectl} creates a 16 MiB named region and starts \texttt{UnrealEditor-Cmd}
+     with its name. The plugin maps the same region. Neither side takes a lock.}
+
+  \Card{1.0}{1.5}{5.75}{5.55}{tool}{\texttt{uectl}}{host process}{%
+    \itm{Creates the region}
+    \itm{Writes the header, \texttt{magic} last}
+    \itm{Starts \texttt{UnrealEditor-Cmd}}
+    \itm{Polls every 10 ms}
+    \itm{Unlinks the region at exit}}
+  \Card{10.25}{1.5}{15.0}{5.55}{eng}{\texttt{UEShmBridge}}{plugin in \texttt{UnrealEditor-Cmd}}{%
+    \itm{Opens the \texttt{-ShmName} region}
+    \itm{Ticks on the game thread}
+    \itm{Waits for \texttt{magic}, version 1}
+    \itm{Sets \texttt{state} to 1 once a game world exists}
+    \itm{Up to 64 commands per tick}}
+
+  \node[anchor=base, font=\smallfont, text=muted] at (8.0,5.36) {POSIX\enspace\texttt{/ueshm-a1b2c3d4}};
+  \node[anchor=base, font=\smallfont, text=muted] at (8.0,5.08) {Windows\enspace\texttt{Local\textbackslash ueshm-a1b2c3d4}};
+
+  \begin{scope}
+    \clip[rounded corners=3pt] (6.8,1.5) rectangle (9.2,4.85);
+    \fill[seghdr] (6.8,4.42) rectangle (9.2,4.85);
+    \fill[segcmd] (6.8,3.62) rectangle (9.2,4.34);
+    \fill[segrsp] (6.8,2.82) rectangle (9.2,3.54);
+    \fill[segbulk] (6.8,1.5) rectangle (9.2,2.74);
+  \end{scope}
+  \node[anchor=base, font=\cellfont] at (8.0,4.56) {header\enspace\textcolor{muted}{\mdseries\tinyfont\texttt{128 B}}};
+  \Two{8.0}{3.98}{command ring}{\texttt{65792 B}}
+  \Two{8.0}{3.18}{reply ring}{\texttt{65792 B}}
+  \Two{8.0}{2.12}{bulk}{\texttt{16645504 B}}
+
+  \foreach \y/\l/\r/\lc/\rc/\ldir/\rdir in {
+      4.635/init/ready/tool/eng/1/-1,
+      3.98/push/pop/tool/tool/1/1,
+      3.18/pop/push/eng/eng/-1/-1,
+      2.12/read/write/eng/eng/-1/-1} {
+    \ifnum\ldir=1
+      \draw[arr, \lc] (5.85,\y) -- (6.7,\y);
+    \else
+      \draw[arr, \lc] (6.7,\y) -- (5.85,\y);
+    \fi
+    \ifnum\rdir=1
+      \draw[arr, \rc] (9.3,\y) -- (10.15,\y);
+    \else
+      \draw[arr, \rc] (10.15,\y) -- (9.3,\y);
+    \fi
+    \node[anchor=base, font=\tinyfont, text=muted] at (6.275,{\y+0.08}) {\l};
+    \node[anchor=base, font=\tinyfont, text=muted] at (9.725,{\y+0.08}) {\r};
   }
 
-  \noindent\begin{tikzpicture}
-    \useasboundingbox (0,-0.08) rectangle (14.00,4.22);
-    \begin{scope}[shift={(0,3.32)}]
-      \MemoryMap{14.00}{0.90}
-      \node[font=\diagramfont\bfseries] at (hc) {header};
-      \node[font=\diagramfont\bfseries] at (cc) {command ring};
-      \node[font=\diagramfont\bfseries] at (rc) {reply ring};
-      \node[font=\diagramfont\bfseries] at (uc) {bulk};
-    \end{scope}
-
-    \draw[ink!40, line width=0.6pt] (b0) -- ([yshift=-1.7mm]b0);
-    \draw[ink!40, line width=0.6pt] (b1) -- ([yshift=-1.7mm]b1);
-    \draw[ink!40, line width=0.6pt] (b2) -- ([yshift=-1.7mm]b2);
-    \draw[ink!40, line width=0.6pt] (b3) -- ([yshift=-1.7mm]b3);
-    \draw[ink!40, line width=0.6pt] (b4) -- ([yshift=-1.7mm]b4);
-    \node[font=\microfont, text=muted, anchor=north west, inner sep=1pt] at ([yshift=-2.0mm]b0) {0};
-    \node[font=\microfont, text=muted, anchor=north] at ([yshift=-2.0mm]b1) {128};
-    \node[font=\microfont, text=muted, anchor=north] at ([yshift=-2.0mm]b2) {65920};
-    \node[font=\microfont, text=muted, anchor=north] at ([yshift=-2.0mm]b3) {131712};
-    \node[font=\microfont, text=muted, anchor=north east, inner sep=1pt] at ([yshift=-2.0mm]b4) {16777216};
-
-    \draw[cardline, line width=0.8pt, rounded corners=3pt, fill=white]
-      (0,-0.02) rectangle (6.82,2.62);
-    \node[anchor=north west, font=\minorfont\bfseries, text=navy, align=left, inner sep=0pt]
-      at (0.28,2.40) {Ring};
-    \begin{scope}[shift={(0.28,1.52)}]
-      \def\ra{1.32}\def\rb{2.64}\def\rw{6.26}\def\rh{0.44}
-      \begin{scope}
-        \clip[rounded corners=2pt] (0,0) rectangle (\rw,\rh);
-        \fill[hdrfill] (0,0) rectangle (\rb,\rh);
-        \fill[cmdfill] (\rb,0) rectangle (\rw,\rh);
-        \draw[white, line width=1.6pt] (\ra,0) -- (\ra,\rh);
-        \draw[white, line width=1.6pt] (\rb,0) -- (\rb,\rh);
-      \end{scope}
-      \draw[ink!30, line width=0.7pt, rounded corners=2pt] (0,0) rectangle (\rw,\rh);
-      \node[font=\microfont\bfseries] at (0.66,0.22) {head};
-      \node[font=\microfont\bfseries] at (1.98,0.22) {tail};
-      \node[font=\microfont\bfseries] at (4.45,0.22) {data};
-      \node[font=\microfont, text=muted, anchor=north] at (0.66,-0.05) {128 B};
-      \node[font=\microfont, text=muted, anchor=north] at (1.98,-0.05) {128 B};
-      \node[font=\microfont, text=muted, anchor=north] at (4.45,-0.05) {65536 B};
-    \end{scope}
-    \node[anchor=north west, align=left, font=\fontsize{8.5}{10.6}\selectfont, text width=6.30cm, inner sep=0pt]
-      at (0.28,0.98)
-      {Monotonic \texttt{uint32}. Index is the low 16 bits.\\
-       Empty when \texttt{head} equals \texttt{tail}.\\
-       Short tail skipped. Release after the write.};
-
-    \draw[cardline, line width=0.8pt, rounded corners=3pt, fill=white]
-      (7.18,-0.02) rectangle (14.00,2.62);
-    \node[anchor=north west, font=\minorfont\bfseries, text=eng, align=left, inner sep=0pt]
-      at (7.46,2.40) {Record};
-    \begin{scope}[shift={(7.46,1.52)}]
-      \def\rh{0.44}
-      \begin{scope}
-        \clip[rounded corners=2pt] (0,0) rectangle (6.26,\rh);
-        \fill[hdrfill] (0,0) rectangle (1.12,\rh);
-        \fill[bulkfill] (1.12,0) rectangle (2.14,\rh);
-        \fill[skipfill] (2.14,0) rectangle (3.06,\rh);
-        \fill[navyfill] (3.06,0) rectangle (4.22,\rh);
-        \fill[rspfill] (4.22,0) rectangle (6.26,\rh);
-        \draw[white, line width=1.3pt] (1.12,0) -- (1.12,\rh);
-        \draw[white, line width=1.3pt] (2.14,0) -- (2.14,\rh);
-        \draw[white, line width=1.3pt] (3.06,0) -- (3.06,\rh);
-        \draw[white, line width=1.3pt] (4.22,0) -- (4.22,\rh);
-      \end{scope}
-      \draw[ink!30, line width=0.7pt, rounded corners=2pt] (0,0) rectangle (6.26,\rh);
-      \node[font=\microfont\bfseries] at (0.56,0.22) {size};
-      \node[font=\microfont\bfseries] at (1.63,0.22) {type};
-      \node[font=\microfont\bfseries] at (2.60,0.22) {pad};
-      \node[font=\microfont\bfseries] at (3.64,0.22) {id};
-      \node[font=\microfont\bfseries] at (5.24,0.22) {payload};
-      \node[font=\microfont, text=muted, anchor=north] at (0.56,-0.05) {u32};
-      \node[font=\microfont, text=muted, anchor=north] at (1.63,-0.05) {u16};
-      \node[font=\microfont, text=muted, anchor=north] at (2.60,-0.05) {u16};
-      \node[font=\microfont, text=muted, anchor=north] at (3.64,-0.05) {u64};
-      \node[font=\microfont, text=muted, anchor=north] at (5.24,-0.05) {max 1024};
-    \end{scope}
-    \node[anchor=north west, align=left, font=\fontsize{8.5}{10.6}\selectfont, text width=6.30cm, inner sep=0pt]
-      at (7.46,0.98)
-      {Round the stored record up to 8 bytes.\\
-       \texttt{size} omits that pad. Replies copy \texttt{id}.\\
-       Read bulk after the matching reply.};
-  \end{tikzpicture}
+  \draw[arr, tool, rounded corners=4pt] (3.375,1.5) -- (3.375,1.08) -- (12.625,1.08) -- (12.625,1.45);
+  \node[tag] at (8.0,1.08)
+    {starts \texttt{UnrealEditor-Cmd \dots\ -ShmName=ueshm-a1b2c3d4}};
+\end{page}
 \end{frame}
 
-\begin{frame}
-  \frametitle{PING round trip}
-  \points{%
-    \item Starts after \texttt{state} is 1 (\texttt{ue\_ready}).
-    \item \texttt{PING} is type 1. \texttt{PONG} is type 101. \texttt{id} and the nonce are copied.
-    \item \texttt{uectl} sleeps 10 ms between polls of the reply ring.%
+% ---------------------------------------------------------------- 2
+\begin{frame}[plain]
+\begin{page}
+  \Chrome{02\quad MEMORY}{Region layout}
+    {Offsets are fixed and checked by \texttt{static\_assert} on both sides. \texttt{uectl}
+     writes the header, then release-stores \texttt{magic}. The plugin waits for it.}
+
+  \foreach \x/\t/\a in {1.0/0/base west, 2.6/128/base, 5.3/65920/base, 8.0/131712/base, 15.0/16777216/base east} {
+    \draw[faint, line width=0.5pt] (\x,5.3) -- (\x,5.4);
+    \node[anchor=\a, font=\smallfont\ttfamily, text=muted] at (\x,5.5) {\t};
+  }
+  \begin{scope}
+    \clip[rounded corners=3pt] (1.0,4.7) rectangle (15.0,5.3);
+    \fill[seghdr] (1.0,4.7) rectangle (2.6,5.3);
+    \fill[segcmd] (2.6,4.7) rectangle (5.3,5.3);
+    \fill[segrsp] (5.3,4.7) rectangle (8.0,5.3);
+    \fill[segbulk] (8.0,4.7) rectangle (15.0,5.3);
+    \draw[sep] (2.6,4.7) -- (2.6,5.3) (5.3,4.7) -- (5.3,5.3) (8.0,4.7) -- (8.0,5.3);
+  \end{scope}
+  \foreach \x/\t in {1.8/header, 3.95/command ring, 6.65/reply ring, 11.5/bulk}
+    \node[anchor=base, font=\labelfont] at (\x,4.92) {\t};
+  \node[anchor=base east, font=\tinyfont, text=faint] at (15.0,4.47) {widths not to scale};
+
+  \fill[seghdr!45] (1.0,4.7) -- (2.6,4.7) -- (15.0,4.0) -- (1.0,4.0) -- cycle;
+  \draw[faint!60, line width=0.4pt] (2.6,4.7) -- (15.0,4.0);
+
+  \foreach \i/\off/\name/\val/\atomic in {
+      0/0/magic/{\texttt{0x48534555}, stored last}/1,
+      1/4/version/{\texttt{1}}/0,
+      2/8/total\_size/{\texttt{16777216}}/0,
+      3/12/state/{\texttt{0}, \texttt{1}, or \texttt{2}, below}/1,
+      4/16/tool\_heartbeat/{+1 per \texttt{uectl} poll}/1,
+      5/20/ue\_heartbeat/{+1 per plugin tick}/1,
+      6/24/cmd\_off/{\texttt{128}}/0,
+      7/28/cmd\_bytes/{\texttt{65536}}/0,
+      8/32/rsp\_off/{\texttt{65920}}/0,
+      9/36/rsp\_bytes/{\texttt{65536}}/0,
+      10/40/bulk\_off/{\texttt{131712}}/0,
+      11/44/bulk\_bytes/{\texttt{16645504}}/0} {
+    \pgfmathsetmacro{\cx}{1.0+mod(\i,4)*3.515}
+    \pgfmathsetmacro{\cy}{4.0-floor(\i/4)*0.74}
+    \fill[seghdr] (\cx,{\cy-0.68}) rectangle ({\cx+3.455},\cy);
+    \ifnum\atomic=1
+      \fill[accent] (\cx,{\cy-0.68}) rectangle ({\cx+0.06},\cy);
+    \fi
+    \node[anchor=base west, font=\tinyfont\ttfamily, text=muted] at ({\cx+0.2},{\cy-0.29}) {\off};
+    \node[anchor=base west, font=\cellfont\ttfamily] at ({\cx+0.62},{\cy-0.29}) {\name};
+    \node[anchor=base west, font=\tinyfont, text=muted] at ({\cx+0.62},{\cy-0.56}) {\val};
+  }
+  \fill[hatch] (1.0,1.4) rectangle (15.0,1.78);
+  \node[tag, font=\tinyfont] at (8.0,1.59) {\texttt{48}\enspace\texttt{pad}, 80 bytes, zero};
+
+  \fill[accent] (1.0,0.97) rectangle (1.06,1.15);
+  \node[anchor=base west, font=\smallfont, text=muted] at (1.2,1.0)
+    {\texttt{std::atomic<uint32\_t>}};
+  \node[anchor=base east, font=\smallfont, text=muted] at (15.0,1.0)
+    {\texttt{state}\enspace \texttt{0} created\enspace\textperiodcentered\enspace
+     \texttt{1} \texttt{ue\_ready}, by the plugin\enspace\textperiodcentered\enspace
+     \texttt{2} closing, by \texttt{uectl} after exit};
+\end{page}
+\end{frame}
+
+% ---------------------------------------------------------------- 3
+\begin{frame}[plain]
+\begin{page}
+  \Chrome{03\quad RINGS}{Rings and records}
+    {Each ring is a single-producer, single-consumer byte queue. A record is a 16-byte
+     prefix and up to 1024 payload bytes, padded to 8.}
+
+  % ring
+  \node[anchor=base west, font=\labelfont] at (1.0,5.55)
+    {Ring\enspace\textcolor{muted}{\mdseries\smallfont one per direction, 65792 B}};
+  \foreach \x/\t/\a in {1.0/0/base west, 2.1/128/base, 3.2/256/base, 7.8/65792/base east}
+    \node[anchor=\a, font=\tinyfont\ttfamily, text=muted] at (\x,5.25) {\t};
+  \begin{scope}
+    \clip[rounded corners=2.5pt] (1.0,4.55) rectangle (7.8,5.12);
+    \fill[seghdr] (1.0,4.55) rectangle (3.2,5.12);
+    \fill[fpad] (3.2,4.55) rectangle (7.8,5.12);
+    \draw[sep] (2.1,4.55) -- (2.1,5.12) (3.2,4.55) -- (3.2,5.12);
+  \end{scope}
+  \Two{1.55}{4.835}{\texttt{head}}{\texttt{128 B}}
+  \Two{2.65}{4.835}{\texttt{tail}}{\texttt{128 B}}
+  \Two{5.5}{4.835}{data}{\texttt{65536 B}}
+
+  \begin{scope}
+    \clip[rounded corners=2.5pt] (1.0,3.35) rectangle (7.8,3.9);
+    \fill[white] (1.0,3.35) rectangle (7.8,3.9);
+    \fill[record] (1.0,3.35) rectangle (1.9,3.9);
+    \fill[record] (4.2,3.35) rectangle (5.3,3.9);
+    \fill[record] (5.3,3.35) rectangle (6.6,3.9);
+    \fill[hatch] (6.6,3.35) rectangle (7.8,3.9);
+    \draw[sep] (5.3,3.35) -- (5.3,3.9);
+  \end{scope}
+  \draw[rule, line width=0.6pt, rounded corners=2.5pt] (1.0,3.35) rectangle (7.8,3.9);
+  \foreach \x/\t/\c in {1.45/record/ink, 3.05/free/faint, 4.75/record/ink, 5.95/record/ink}
+    \node[anchor=base, font=\tinyfont, text=\c] at (\x,3.57) {\t};
+  \foreach \x/\t in {1.9/head, 4.2/tail} {
+    \fill[ink] (\x,3.93) -- ({\x-0.07},4.05) -- ({\x+0.07},4.05) -- cycle;
+    \node[anchor=base, font=\tinyfont\ttfamily] at (\x,4.13) {\t};
+  }
+  \draw[arr, accent, line width=0.7pt] (7.2,3.3) .. controls (7.2,2.85) and (1.45,2.85) .. (1.45,3.28);
+  \node[tag, text=accent, font=\tinyfont] at (4.32,2.97) {no room before the end: skip the tail, write at 0};
+
+  \node[anchor=north west, font=\bodyfont, text width=6.8cm, align=left] at (1.0,2.62) {%
+    \itm{Counters are monotonic \texttt{uint32}. Bytes in use: \texttt{head - tail}. Index: \texttt{counter \& 0xFFFF}.}
+    \itm{Producer copies, then release-stores \texttt{head}. Consumer acquires \texttt{head}, copies, releases \texttt{tail}.}};
+
+  % record
+  \node[anchor=base west, font=\labelfont] at (8.2,5.55)
+    {Record\enspace\textcolor{muted}{\mdseries\smallfont 16 bytes per row}};
+  \foreach \x/\t/\a in {8.2/0/base west, 9.9/4/base, 10.75/6/base, 11.6/8/base, 15.0/16/base east}
+    \node[anchor=\a, font=\tinyfont\ttfamily, text=muted] at (\x,5.25) {\t};
+  \begin{scope}
+    \clip[rounded corners=2.5pt] (8.2,4.55) rectangle (15.0,5.12);
+    \fill[fsize] (8.2,4.55) rectangle (9.9,5.12);
+    \fill[ftype] (9.9,4.55) rectangle (10.75,5.12);
+    \fill[fpad] (10.75,4.55) rectangle (11.6,5.12);
+    \fill[fid] (11.6,4.55) rectangle (15.0,5.12);
+    \draw[sep] (9.9,4.55) -- (9.9,5.12) (10.75,4.55) -- (10.75,5.12) (11.6,4.55) -- (11.6,5.12);
+  \end{scope}
+  \Two{9.05}{4.835}{\texttt{size}}{\texttt{u32}}
+  \Two{10.325}{4.835}{\texttt{type}}{\texttt{u16}}
+  \Two{11.175}{4.835}{\texttt{pad}}{\texttt{u16}, 0}
+  \Two{13.3}{4.835}{\texttt{id}}{\texttt{u64}, copied into the reply}
+
+  \foreach \x/\t/\a in {8.2/16/base west, 13.2/size/base}
+    \node[anchor=\a, font=\tinyfont\ttfamily, text=muted] at (\x,4.05) {\t};
+  \begin{scope}
+    \clip[rounded corners=2.5pt] (8.2,3.35) rectangle (14.1,3.9);
+    \fill[fpay] (8.2,3.35) rectangle (13.2,3.9);
+    \fill[hatch] (13.2,3.35) rectangle (14.1,3.9);
+    \draw[sep] (13.2,3.35) -- (13.2,3.9);
+  \end{scope}
+  \draw[rule, line width=0.6pt, dash pattern=on 2pt off 2pt] (14.1,3.35) -- (15.0,3.35) (14.1,3.9) -- (15.0,3.9);
+  \Two{10.7}{3.625}{\texttt{payload}}{0 to 1024 B}
+  \node[anchor=base, font=\tinyfont, text=muted] at (13.65,3.12) {pad to 8};
+
+  \node[anchor=north west, font=\bodyfont, text width=6.8cm, align=left] at (8.2,2.62) {%
+    \itm{\texttt{size} is 16 plus the payload length. The ring advances by \texttt{size} rounded up to 8.}
+    \itm{\texttt{uectl} discards replies with another \texttt{id}. Results over 1024 B go to bulk, read after the reply.}};
+\end{page}
+\end{frame}
+
+% ---------------------------------------------------------------- 4
+\begin{frame}[plain]
+\begin{page}
+  \Chrome{04\quad PROTOCOL}{PING round trip}
+    {After \texttt{state} reaches 1, \texttt{uectl} pushes \texttt{PING}. The plugin pops it on its
+     next tick and pushes \texttt{PONG} with the same \texttt{id} and nonce.}
+
+  % lifelines
+  \foreach \x/\dash in {2.05/solid, 4.35/dashed, 6.65/solid, 8.95/dashed}
+    \draw[faint, line width=0.6pt, \dash] (\x,5.2) -- (\x,1.7);
+  \foreach \x/\f/\t/\name in {2.05/tool/white/\texttt{uectl}, 4.35/segcmd/ink/command ring,
+                              6.65/eng/white/game thread, 8.95/segrsp/ink/reply ring} {
+    \fill[\f, rounded corners=2.5pt] ({\x-1.05},5.2) rectangle ({\x+1.05},5.7);
+    \node[anchor=base, font=\cellfont, text=\t] at (\x,5.38) {\name};
   }
 
-  \noindent\begin{tikzpicture}
-    \useasboundingbox (0,0) rectangle (14.00,4.52);
-    \coordinate (a0) at (2.05,4.16);
-    \coordinate (a1) at (5.51,4.16);
-    \coordinate (a2) at (8.97,4.16);
-    \coordinate (a3) at (12.43,4.16);
+  \draw[accent, line width=0.6pt, dash pattern=on 2pt off 2pt] (1.0,4.85) -- (10.0,4.85);
+  \node[tag, text=accent, anchor=west] at (2.25,4.85) {\texttt{state == 1} (\texttt{ue\_ready})};
 
-    \draw[navy!30, line width=0.7pt] (2.05,3.82) -- (2.05,2.52);
-    \draw[navy!30, line width=0.7pt] (5.51,3.82) -- (5.51,2.52);
-    \draw[eng!35, line width=0.7pt] (8.97,3.82) -- (8.97,2.52);
-    \draw[eng!35, line width=0.7pt] (12.43,3.82) -- (12.43,2.52);
+  \fill[eng] (6.58,3.1) rectangle (6.72,4.05);
+  \node[anchor=base west, font=\tinyfont, text=eng] at (6.82,4.12) {\texttt{FTSTicker} tick};
 
-    \node[draw=navy, fill=navyfill, line width=0.8pt, rounded corners=2.5pt,
-          minimum width=3.06cm, minimum height=0.64cm, font=\minorfont\bfseries] at (a0) {uectl};
-    \node[draw=navy!55, fill=cmdfill, line width=0.8pt, rounded corners=2.5pt,
-          minimum width=3.06cm, minimum height=0.64cm, font=\minorfont\bfseries] at (a1) {command ring};
-    \node[draw=eng, fill=engfill, line width=0.8pt, rounded corners=2.5pt,
-          minimum width=3.06cm, minimum height=0.64cm, font=\minorfont\bfseries] at (a2) {game thread};
-    \node[draw=eng!60, fill=rspfill, line width=0.8pt, rounded corners=2.5pt,
-          minimum width=3.06cm, minimum height=0.64cm, font=\minorfont\bfseries] at (a3) {reply ring};
+  \foreach \y in {4.15,3.98,...,2.6}
+    \draw[faint, line width=0.6pt] (1.98,\y) -- (2.12,\y);
+  \node[anchor=base west, font=\tinyfont, text=muted] at (2.25,3.3) {polls every 10 ms};
+  \node[anchor=base west, font=\tinyfont, text=muted] at (2.25,3.05) {gives up after 10 s};
 
-    \draw[stealth, navy] (2.05,3.50) -- (5.51,3.50);
-    \draw[stealth, eng] (5.51,2.98) -- (8.97,2.98);
-    \draw[stealth, eng] (8.97,2.46) -- (12.43,2.46);
-    \draw[stealth, navy] (12.43,1.70) -- (2.05,1.70);
+  \foreach \n/\xa/\xb/\y/\c/\t in {
+      1/2.05/4.35/4.4/tool/{\texttt{PING id=1}},
+      2/4.35/6.58/3.85/tool/{pop},
+      3/6.72/8.95/3.3/eng/{\texttt{PONG id=1}},
+      4/8.95/2.05/2.4/eng/{pop, match \texttt{id}, compare nonce}} {
+    \draw[arr, \c] (\xa,\y) -- (\xb,\y);
+    \node[anchor=base, font=\smallfont] (m\n) at ({(\xa+\xb)/2+0.12},{\y+0.1}) {\t};
+    \fill[\c] ($(m\n.base west)+(-0.2,0.085)$) circle[radius=0.125];
+    \node[font=\tinyfont\bfseries, text=white] at ($(m\n.base west)+(-0.2,0.085)$) {\n};
+  }
 
-    \node[font=\microfont, inner sep=1pt] at (3.78,3.72) {push PING};
-    \node[font=\microfont, inner sep=1pt] at (7.24,3.20) {tick pops it};
-    \node[font=\microfont, inner sep=1pt] at (10.70,2.68) {push PONG};
-    \node[font=\microfont, inner sep=1pt] at (7.24,2.08)
-      {print \texttt{pong 55aa55aa55aa55aa}};
+  \fill[night, rounded corners=2.5pt] (1.0,1.25) rectangle (4.95,1.7);
+  \node[anchor=base west, font=\smallfont\ttfamily, text=white] at (1.2,1.41) {pong 55aa55aa55aa55aa};
+  \node[anchor=base west, font=\tinyfont, text=faint] at (5.1,1.41) {stdout};
 
-    \foreach \y/\n/\col in {3.50/1/navy, 2.98/2/eng, 2.46/3/eng, 1.70/4/navy} {
-      \fill[\col] (0.22,\y) circle[radius=0.18];
-      \node[font=\microfont\bfseries, text=white] at (0.22,\y) {\n};
+  % bytes
+  \node[anchor=base west, font=\labelfont] at (10.54,5.38)
+    {\texttt{PING}\enspace\textcolor{muted}{\mdseries\smallfont 24 B, little-endian}};
+  \foreach \row/\y/\bytes/\fills in {
+      00/4.75/{18,00,00,00,01,00,00,00}/{fsize,fsize,fsize,fsize,ftype,ftype,fpad,fpad},
+      08/4.3/{01,00,00,00,00,00,00,00}/{fid,fid,fid,fid,fid,fid,fid,fid},
+      10/3.85/{aa,55,aa,55,aa,55,aa,55}/{fpay,fpay,fpay,fpay,fpay,fpay,fpay,fpay}} {
+    \node[anchor=base west, font=\tinyfont\ttfamily, text=faint] at (10.54,{\y+0.13}) {\row};
+    \foreach \b [count=\k from 0] in \bytes {
+      \pgfmathsetmacro{\hx}{11.04+\k*0.5}
+      \foreach \f [count=\j from 0] in \fills {
+        \ifnum\j=\k \Hex{\hx}{\y}{\f}{ink}{\b}\fi
+      }
     }
-
-    \begin{scope}[shift={(1.48,0)}]
-      \node[font=\microfont, text=muted, anchor=south, inner sep=1pt] at (0.90,1.02) {size\quad 4};
-      \node[font=\microfont, text=muted, anchor=south, inner sep=1pt] at (2.60,1.02) {type\quad 2};
-      \node[font=\microfont, text=muted, anchor=south, inner sep=1pt] at (4.10,1.02) {pad\quad 2};
-      \node[font=\microfont, text=muted, anchor=south, inner sep=1pt] at (5.90,1.02) {id\quad 8};
-      \node[font=\microfont, text=muted, anchor=south, inner sep=1pt] at (9.70,1.02) {nonce\quad 8};
-      \begin{scope}[shift={(0,0.46)}]
-        \begin{scope}
-          \clip[rounded corners=1.8pt] (0,0) rectangle (12.52,0.42);
-          \fill[hdrfill] (0,0) rectangle (1.80,0.42);
-          \fill[bulkfill] (1.80,0) rectangle (3.40,0.42);
-          \fill[skipfill] (3.40,0) rectangle (4.80,0.42);
-          \fill[navyfill] (4.80,0) rectangle (7.00,0.42);
-          \fill[rspfill] (7.00,0) rectangle (12.52,0.42);
-          \draw[white, line width=1.2pt] (1.80,0) -- (1.80,0.42);
-          \draw[white, line width=1.2pt] (3.40,0) -- (3.40,0.42);
-          \draw[white, line width=1.2pt] (4.80,0) -- (4.80,0.42);
-          \draw[white, line width=1.2pt] (7.00,0) -- (7.00,0.42);
-        \end{scope}
-        \draw[ink!28, line width=0.7pt, rounded corners=1.8pt] (0,0) rectangle (12.52,0.42);
-        \node[font=\minorfont\bfseries] at (0.90,0.21) {24};
-        \node[font=\minorfont\bfseries] at (2.60,0.21) {1};
-        \node[font=\minorfont\bfseries] at (4.10,0.21) {0};
-        \node[font=\minorfont\bfseries] at (5.90,0.21) {1};
-        \node[font=\minorfont] at (9.76,0.21) {\texttt{55aa55aa55aa55aa}};
-      \end{scope}
-      \begin{scope}[shift={(0,0.02)}]
-        \begin{scope}
-          \clip[rounded corners=1.8pt] (0,0) rectangle (12.52,0.44);
-          \fill[hdrfill] (0,0) rectangle (1.80,0.44);
-          \fill[bulkfill] (1.80,0) rectangle (3.40,0.44);
-          \fill[skipfill] (3.40,0) rectangle (4.80,0.44);
-          \fill[navyfill] (4.80,0) rectangle (7.00,0.44);
-          \fill[rspfill] (7.00,0) rectangle (12.52,0.44);
-          \draw[white, line width=1.2pt] (1.80,0) -- (1.80,0.44);
-          \draw[white, line width=1.2pt] (3.40,0) -- (3.40,0.44);
-          \draw[white, line width=1.2pt] (4.80,0) -- (4.80,0.44);
-          \draw[white, line width=1.2pt] (7.00,0) -- (7.00,0.44);
-        \end{scope}
-        \draw[ink!28, line width=0.7pt, rounded corners=1.8pt] (0,0) rectangle (12.52,0.44);
-        \node[font=\minorfont\bfseries] at (0.90,0.22) {24};
-        \node[font=\minorfont\bfseries] at (2.60,0.22) {101};
-        \node[font=\minorfont\bfseries] at (4.10,0.22) {0};
-        \node[font=\minorfont\bfseries] at (5.90,0.22) {1};
-        \node[font=\minorfont] at (9.76,0.22) {\texttt{55aa55aa55aa55aa}};
-      \end{scope}
-    \end{scope}
-    \node[font=\minorfont\bfseries, text=navy, anchor=east] at (1.36,0.67) {PING};
-    \node[font=\minorfont\bfseries, text=eng, anchor=east] at (1.36,0.24) {PONG};
-  \end{tikzpicture}
-\end{frame}
-
-\begin{frame}
-  \frametitle{Tool-driven timestep}
-  \points{%
-    \item Not implemented. The command ring and the reply ring stay as they are.
-    \item Current: the engine advances time, then \texttt{FTSTicker} drains commands.
-    \item Proposed: the frame waits until \texttt{uectl} sends a delta.%
   }
 
-  \noindent\begin{tikzpicture}
-    \useasboundingbox (0,0) rectangle (14.00,4.88);
-    \node[anchor=north west, font=\microfont\bfseries, text=muted, inner sep=0pt] at (0,4.88) {Current};
-    \node[anchor=north west, font=\microfont\bfseries, text=accent, inner sep=0pt] at (0,2.22) {Proposed};
-
-    \foreach \i/\name/\sub/\fillc/\drawc in {
-      0/Unreal/{advances time}/engfill/eng,
-      1/frame/{already started}/white/eng!45,
-      2/FTSTicker/{drains commands}/white/eng!45,
-      3/uectl/{polls, 10 ms}/navyfill/navy} {
-      \pgfmathsetmacro{\x}{\i*3.64}
-      \draw[\drawc, fill=\fillc, line width=0.9pt, rounded corners=3pt]
-        (\x,2.92) rectangle ({\x+3.08},4.48);
-      \ifnum\i=0
-        \pic[draw=eng, fill=eng, scale=0.72] at ({\x+0.48},3.70) {clock};
-        \node[font=\fontsize{13}{16}\selectfont\bfseries] at ({\x+1.82},3.94) {\name};
-        \node[font=\microfont, text=muted] at ({\x+1.82},3.46) {\sub};
+  \node[anchor=base west, font=\labelfont] at (10.54,3.42)
+    {\texttt{PONG}\enspace\textcolor{muted}{\mdseries\smallfont byte 4 is \texttt{0x65}, type 101}};
+  \foreach \row/\y/\bytes in {
+      00/2.8/{18,00,00,00,65,00,00,00},
+      08/2.35/{01,00,00,00,00,00,00,00},
+      10/1.9/{aa,55,aa,55,aa,55,aa,55}} {
+    \node[anchor=base west, font=\tinyfont\ttfamily, text=faint] at (10.54,{\y+0.13}) {\row};
+    \foreach \b [count=\k from 0] in \bytes {
+      \pgfmathsetmacro{\hx}{11.04+\k*0.5}
+      \ifnum\row=0 \ifnum\k=4
+        \Hex{\hx}{\y}{accent}{white}{\b}
       \else
-        \node[font=\fontsize{13}{16}\selectfont\bfseries] at ({\x+1.54},3.94) {\name};
-        \node[font=\microfont, text=muted] at ({\x+1.54},3.46) {\sub};
+        \Hex{\hx}{\y}{fade}{faint}{\b}
+      \fi\else
+        \Hex{\hx}{\y}{fade}{faint}{\b}
       \fi
     }
-    \draw[stealth, eng] (3.08,3.70) -- (3.64,3.70);
-    \draw[stealth, eng] (6.72,3.70) -- (7.28,3.70);
-    \draw[stealth, eng] (10.36,3.70) -- (10.92,3.70);
+  }
 
-    \foreach \i/\name/\sub/\fillc/\drawc in {
-      0/uectl/{writes a step}/navyfill/navy,
-      1/step/{carries dt}/white/navy!40,
-      2/frame/{waits on the ring}/white/navy!40,
-      3/world/{ticks by dt}/engfill/eng} {
-      \pgfmathsetmacro{\x}{\i*3.64}
-      \draw[\drawc, fill=\fillc, line width=0.9pt, rounded corners=3pt]
-        (\x,0.18) rectangle ({\x+3.08},1.74);
-      \ifnum\i=0
-        \pic[draw=navy, fill=navy, scale=0.72] at ({\x+0.48},0.96) {clock};
-        \node[font=\fontsize{13}{16}\selectfont\bfseries] at ({\x+1.82},1.20) {\name};
-        \node[font=\microfont, text=muted] at ({\x+1.82},0.72) {\sub};
-      \else
-        \node[font=\fontsize{13}{16}\selectfont\bfseries] at ({\x+1.54},1.20) {\name};
-        \node[font=\microfont, text=muted] at ({\x+1.54},0.72) {\sub};
-      \fi
+  \node[anchor=base east, font=\tinyfont, text=muted] at (15.0,1.41)
+    {\key{fsize}size\quad\key{ftype}type\quad\key{fpad}pad\quad\key{fid}id\quad\key{fpay}nonce};
+\end{page}
+\end{frame}
+
+% ---------------------------------------------------------------- 5
+\begin{frame}[plain]
+\begin{page}
+  \Chrome{05\quad PROPOSAL}{Tool-driven timestep}
+    {Today the engine takes each frame's \texttt{dt} from the wall clock, before commands are
+     popped. Proposed: each frame waits for a step from \texttt{uectl} and uses its \texttt{dt}.}
+  \node[anchor=west, draw=accent, line width=0.6pt, rounded corners=2pt, inner xsep=4pt, inner ysep=2.5pt,
+        font=\smallfont\bfseries, text=accent] at ($(title.base east)+(0.35,0.24)$) {Not implemented};
+
+  % current
+  \node[anchor=base west, font=\labelfont] at (1.0,5.5) {Current};
+  \node[anchor=base east, font=\tinyfont, text=faint] at (15.0,5.5) {time\enspace\textrightarrow};
+  \node[anchor=base east, font=\smallfont\ttfamily, text=muted] at (2.45,5.03) {uectl};
+  \node[anchor=base east, font=\smallfont, text=muted] at (2.45,4.27) {engine};
+  \draw[rule, line width=0.6pt] (2.7,5.1) -- (15.0,5.1);
+  \foreach \x in {2.85,3.1,...,14.9}
+    \fill[faint] (\x,5.1) circle[radius=0.022];
+  \begin{scope}
+    \clip (2.7,3.9) rectangle (15.0,4.6);
+    \foreach \a/\b in {2.7/5.5, 5.6/8.9, 9.0/11.3, 11.4/15.3} {
+      \fill[segrsp!60, rounded corners=2.5pt] (\a,4.05) rectangle (\b,4.6);
+      \fill[eng, rounded corners=2pt] ({\a+0.05},4.1) rectangle ({\a+0.5},4.55);
+      \node[anchor=base, font=\tinyfont\ttfamily, text=white] at ({\a+0.275},4.28) {dt};
+      \fill[tool] ({\a+0.55*(\b-\a)-0.04},4.1) rectangle ({\a+0.55*(\b-\a)+0.04},4.55);
     }
-    \draw[stealth, navy] (3.08,0.96) -- (3.64,0.96);
-    \draw[stealth, navy] (6.72,0.96) -- (7.28,0.96);
-    \draw[stealth, navy] (10.36,0.96) -- (10.92,0.96);
-  \end{tikzpicture}
+  \end{scope}
+  \foreach \x/\px in {4.6/7.415, 10.7/13.555} {
+    \draw[arr, tool, line width=0.7pt] (\x,5.03) .. controls (\x,4.8) and (\px,4.85) .. (\px,4.63);
+    \fill[tool] (\x,5.1) circle[radius=0.07];
+    \node[anchor=base, font=\tinyfont, text=tool] at (\x,5.23) {command};
+  }
+  \node[anchor=base west, font=\tinyfont, text=muted] at (2.7,3.69)
+    {\key{eng}\texttt{dt} from the wall clock, fixed at frame start\qquad
+     \textcolor{tool}{\rule[-0.15ex]{0.5ex}{1.5ex}}\hspace{0.45em}\texttt{FTSTicker} pops up to 64 commands after \texttt{dt} is fixed};
+
+  \draw[rule, line width=0.6pt] (1.0,3.45) -- (15.0,3.45);
+
+  % proposed
+  \node[anchor=base west, font=\labelfont, text=accent] at (1.0,3.05) {Proposed};
+  \node[anchor=base east, font=\smallfont\ttfamily, text=muted] at (2.45,2.58) {uectl};
+  \node[anchor=base east, font=\smallfont, text=muted] at (2.45,1.82) {engine};
+  \draw[rule, line width=0.6pt] (2.7,2.65) -- (15.0,2.65);
+  \fill[hatch] (2.7,1.6) rectangle (15.0,2.15);
+  \foreach \a/\b in {3.0/6.0, 7.2/10.2, 11.4/14.4} {
+    \fill[white] ({\a-0.03},1.6) rectangle ({\b+0.03},2.15);
+    \fill[segrsp!60, rounded corners=2.5pt] (\a,1.6) rectangle (\b,2.15);
+    \fill[tool, rounded corners=2pt] ({\a+0.05},1.65) rectangle ({\a+0.5},2.1);
+    \node[anchor=base, font=\tinyfont\ttfamily, text=white] at ({\a+0.275},1.83) {dt};
+    \draw[arr, tool, line width=0.7pt] (\a,2.58) -- (\a,2.2);
+    \fill[tool] (\a,2.65) circle[radius=0.07];
+    \node[anchor=base, font=\tinyfont\ttfamily, text=tool] at (\a,2.78) {step dt};
+  }
+  \node[anchor=base west, font=\tinyfont, text=muted] at (2.7,1.24)
+    {\key{tool}\texttt{dt} from the step record\qquad
+     \tikz[baseline=-0.15ex]\fill[hatch] (0,0) rectangle (1.5ex,1.5ex);\hspace{0.45em}engine waits on the command ring};
+  \node[anchor=base east, font=\tinyfont, text=muted] at (15.0,1.24) {rings and record format unchanged};
+\end{page}
 \end{frame}
 
 \end{document}
