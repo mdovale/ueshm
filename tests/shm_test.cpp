@@ -9,10 +9,14 @@
 
 namespace {
 
+// Mapping under test. Smaller than the 16 MiB default, and large enough for the end-byte check.
 constexpr std::uint32_t kSize = 65536;
+// Parent pattern at word 0. Distinct from the child pattern, so a child that never wrote fails the check.
 constexpr std::uint32_t kParent = 0xA1B2C3D4u;
+// Child pattern at word 1. Distinct from the parent pattern and from the zero fill.
 constexpr std::uint32_t kChild = 0x11223344u;
 
+// Logical name: ueshm- plus 8 random hex digits.
 std::string MakeName() {
 	std::random_device rd;
 	const auto n = static_cast<std::uint32_t>(rd());
@@ -21,11 +25,13 @@ std::string MakeName() {
 	return buf;
 }
 
+// Print `msg` to stderr and return 1.
 int Fail(const char* msg) {
 	std::fprintf(stderr, "%s\n", msg);
 	return 1;
 }
 
+// Open `name`, check the parent pattern, and write the child pattern at word 1.
 int Child(const std::string& name) {
 	ShmRegion region = ShmRegion::Open(name);
 	if (!region) {
@@ -45,6 +51,7 @@ int Child(const std::string& name) {
 
 }  // namespace
 
+// Parent: share a pattern with a child process, then create the same name again.
 int main(int argc, char** argv) {
 	if (argc == 3 && std::strcmp(argv[1], "child") == 0) {
 		return Child(argv[2]);

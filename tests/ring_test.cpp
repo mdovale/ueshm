@@ -10,6 +10,7 @@
 
 namespace {
 
+// Print `msg` to stderr and return 1.
 int Fail(const char* msg) {
 	std::fprintf(stderr, "%s\n", msg);
 	return 1;
@@ -18,6 +19,7 @@ int Fail(const char* msg) {
 struct Region {
 	unsigned char* bytes;
 
+	// Allocate and init a default-sized region. `bytes` is null if init fails.
 	Region() : bytes(static_cast<unsigned char*>(::operator new(kDefaultBytes, std::align_val_t{128}))) {
 		if (!InitRegion(bytes, kDefaultBytes)) {
 			std::fprintf(stderr, "init failed\n");
@@ -25,14 +27,19 @@ struct Region {
 		}
 	}
 
+	// Free the allocation.
 	~Region() { ::operator delete(bytes, std::align_val_t{128}); }
 
+	// The region header.
 	Header* header() { return reinterpret_cast<Header*>(bytes); }
+	// The command ring.
 	Ring cmd() { return Ring(bytes + header()->cmd_off); }
 
+	// True when init succeeded.
 	bool ok() const { return bytes != nullptr; }
 };
 
+// Encode and push one record. False if encode or push fails.
 bool PushPayload(Ring& ring, std::uint16_t type, std::uint64_t id, const void* payload, std::uint32_t n) {
 	Message msg;
 	msg.type = type;
@@ -49,6 +56,7 @@ bool PushPayload(Ring& ring, std::uint16_t type, std::uint64_t id, const void* p
 	return ring.Push(buf, occ);
 }
 
+// Pop and decode one record. False if the ring is empty.
 bool PopMessage(Ring& ring, Message* msg) {
 	unsigned char buf[16 + kMaxPayload];
 	std::uint32_t size = 0;
@@ -58,6 +66,7 @@ bool PopMessage(Ring& ring, Message* msg) {
 	return Decode(buf, size, msg);
 }
 
+// A fresh ring pops nothing, and one ping survives a push and a pop.
 int TestEmpty() {
 	Region region;
 	if (!region.ok()) {
@@ -98,6 +107,7 @@ int TestEmpty() {
 	return 0;
 }
 
+// A full ring refuses another record, including one that would skip past the end.
 int TestFull() {
 	Region region;
 	if (!region.ok()) {
@@ -143,6 +153,7 @@ int TestFull() {
 	return 0;
 }
 
+// A record with no room at the end is written at offset 0 and pops intact.
 int TestWrap() {
 	Region region;
 	if (!region.ok()) {
@@ -186,12 +197,14 @@ int TestWrap() {
 	return 0;
 }
 
+// 10000 messages cross two threads without a lost or reordered id.
 int TestStress() {
 	Region region;
 	if (!region.ok()) {
 		return 1;
 	}
 	Ring ring = region.cmd();
+	// Messages exchanged on two threads. The run has to finish inside the 30 s ctest limit.
 	constexpr int kCount = 10000;
 	std::atomic<bool> failed{false};
 	std::string error;
@@ -246,6 +259,7 @@ int TestStress() {
 
 }  // namespace
 
+// Run the test named by argv[1]: empty, full, wrap, or stress.
 int main(int argc, char** argv) {
 	if (argc != 2) {
 		return Fail("usage");

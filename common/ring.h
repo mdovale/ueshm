@@ -9,16 +9,21 @@
 // in the bytes left at the end is written at offset 0, and that tail is skipped.
 class Ring {
 public:
+	// Data bytes. Power of two, so the index is counter & (capacity - 1). One record must fit.
 	static constexpr std::uint32_t kCapacity = 65536;
+	// Bytes reserved for head, and the same again for tail. 128 puts each counter on its own cache line.
 	static constexpr std::uint32_t kSlot = 128;
+	// Mapped span of one ring, counters included. Header cmd_bytes is kCapacity, not this.
 	static constexpr std::uint32_t kBytes = kSlot * 2 + kCapacity;
 
+	// View a ring whose head is at `head`. Init must already have run.
 	explicit Ring(void* head)
 		: head_(reinterpret_cast<std::atomic<std::uint32_t>*>(head)),
 		  tail_(reinterpret_cast<std::atomic<std::uint32_t>*>(
 			  static_cast<unsigned char*>(head) + kSlot)),
 		  data_(static_cast<unsigned char*>(head) + kSlot * 2) {}
 
+	// Set head and tail to 0. Call once, before either side pushes.
 	static void Init(void* head) {
 		auto* bytes = static_cast<unsigned char*>(head);
 		new (bytes) std::atomic<std::uint32_t>(0);
@@ -98,9 +103,12 @@ public:
 		}
 	}
 
+	// Monotonic producer offset.
 	std::uint32_t Head() const { return head_->load(std::memory_order_acquire); }
+	// Monotonic consumer offset.
 	std::uint32_t Tail() const { return tail_->load(std::memory_order_acquire); }
 
+	// Occupancy rounded up to 8, so the next record stays aligned for the u64 id.
 	static constexpr std::uint32_t Align8(std::uint32_t n) { return (n + 7u) & ~7u; }
 
 private:

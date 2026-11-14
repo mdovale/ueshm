@@ -15,7 +15,9 @@
 
 namespace {
 
+// Budget for ue_ready, and again for process exit after QUIT. Past this the run has failed.
 constexpr std::chrono::seconds kReadyWait{60};
+// Budget for one push or one matching reply. Separate from the ready budget.
 constexpr std::chrono::seconds kReplyWait{10};
 
 struct Options {
@@ -30,6 +32,7 @@ struct Session {
 	ShmRegion region;
 	Process process;
 
+	// Kill a child that is still running, then mark the region closing.
 	~Session()
 	{
 		if (process) {
@@ -42,12 +45,14 @@ struct Session {
 	}
 };
 
+// Print the command line to stderr.
 void Usage() {
 	std::fprintf(stderr,
 		"usage: uectl launch|ping|demo|exec --engine <root> --project <uproject> [--map <map>]\n"
 		"       uectl exec <command> --engine <root> --project <uproject> [--map <map>]\n");
 }
 
+// Fill `opt` from argv. False means the caller should print usage.
 bool Parse(int argc, char** argv, Options* opt) {
 	if (argc < 2) {
 		return false;
@@ -56,6 +61,7 @@ bool Parse(int argc, char** argv, Options* opt) {
 	std::vector<std::string> extra;
 	for (int i = 2; i < argc; ++i) {
 		const std::string arg = argv[i];
+		// Store the next argv element in `dest`. False if it is missing.
 		auto take = [&](std::filesystem::path* dest) {
 			if (i + 1 >= argc) {
 				return false;
@@ -95,6 +101,7 @@ bool Parse(int argc, char** argv, Options* opt) {
 	return extra.empty() && (opt->command == "launch" || opt->command == "ping" || opt->command == "demo");
 }
 
+// First UnrealEditor-Cmd that exists under `root`, or an empty path.
 std::filesystem::path EditorPath(const std::filesystem::path& root) {
 	const std::filesystem::path candidates[] = {
 		root / "Engine/Binaries/Mac/UnrealEditor-Cmd",
@@ -110,6 +117,7 @@ std::filesystem::path EditorPath(const std::filesystem::path& root) {
 	return {};
 }
 
+// Logical name: ueshm- plus 8 random hex digits.
 std::string MakeName() {
 	std::random_device rd;
 	const auto n = static_cast<std::uint32_t>(rd());
@@ -120,6 +128,7 @@ std::string MakeName() {
 
 enum class Wait { Ok, Timeout, Exited };
 
+// Sleep 10 ms until `pred`, the child exits, or `limit`. Bumps tool_heartbeat each check.
 template <class Pred>
 Wait Poll(Header* header, Process* process, std::chrono::milliseconds limit, Pred pred, int* exit_code) {
 	const auto deadline = std::chrono::steady_clock::now() + limit;
@@ -142,18 +151,21 @@ Wait Poll(Header* header, Process* process, std::chrono::milliseconds limit, Pre
 	}
 }
 
+// Encode `msg` and push it once. False if the ring refuses the record.
 bool Push(Ring& ring, const Message& msg) {
 	unsigned char buf[16 + kMaxPayload + 8];
 	const std::uint32_t occ = Encode(msg, buf, sizeof(buf));
 	return occ != 0 && ring.Push(buf, occ);
 }
 
+// Poll until the push fits, or the reply budget expires.
 bool Send(Header* header, Process* process, Ring& ring, const Message& msg) {
 	const auto result = Poll(
 		header, process, kReplyWait, [&] { return Push(ring, msg); }, nullptr);
 	return result == Wait::Ok;
 }
 
+// Poll until a reply with `id` is popped, or the reply budget expires.
 bool Recv(Header* header, Process* process, Ring& ring, std::uint64_t id, Message* reply) {
 	const auto result = Poll(
 		header,
@@ -171,6 +183,7 @@ bool Recv(Header* header, Process* process, Ring& ring, std::uint64_t id, Messag
 	return result == Wait::Ok;
 }
 
+// Print `msg` to stderr and return 1.
 int Fail(const char* msg) {
 	std::fprintf(stderr, "%s\n", msg);
 	return 1;
@@ -178,7 +191,9 @@ int Fail(const char* msg) {
 
 }  // namespace
 
+// Run one subcommand. Nonzero on usage errors, timeout, crash, or a failed check.
 int main(int argc, char** argv) {
+	// Nothing is mapped yet. A bad argv line stops here.
 	Options opt;
 	if (!Parse(argc, argv, &opt)) {
 		Usage();
@@ -189,12 +204,14 @@ int main(int argc, char** argv) {
 	if (editor.empty()) {
 		return Fail("editor not found");
 	}
+	// Absolute path. The editor resolves a relative .uproject from its binary directory.
 	std::error_code ec;
 	const std::filesystem::path project = std::filesystem::absolute(opt.project, ec);
 	if (ec) {
 		return Fail("project path");
 	}
 
+	// Publish the header before the child exists. The plugin waits on magic.
 	const std::string name = MakeName();
 	Session session;
 	session.region = ShmRegion::Create(name, kDefaultBytes);
@@ -206,6 +223,7 @@ int main(int argc, char** argv) {
 	Ring commands(base + header->cmd_off);
 	Ring replies(base + header->rsp_off);
 
+	// -ShmName is the logical name. The plugin opens that object; it does not create it.
 	session.process = Process::Launch({
 		editor.string(),
 		project.string(),
@@ -222,6 +240,8 @@ int main(int argc, char** argv) {
 		return Fail("launch failed");
 	}
 
+	// state becomes 1 only after a Game or PIE world exists.
+	// Any return from here runs ~Session: kill a live child, then mark the region closing.
 	int exit_code = 0;
 	const Wait ready = Poll(
 		header,
@@ -238,6 +258,7 @@ int main(int argc, char** argv) {
 	}
 
 	std::uint64_t next_id = 1;
+	// launch sends no orders. It prints the name and blocks until the editor exits.
 	if (opt.command == "launch") {
 		std::printf("%s\n", name.c_str());
 		std::fflush(stdout);
@@ -255,9 +276,13 @@ int main(int argc, char** argv) {
 		return 0;
 	}
 
+	// demo checks the link, then a console command, then spawn, then the bulk dump.
 	if (opt.command == "demo") {
+		// Actors demo must spawn and read back. Any other count fails the run.
 		constexpr std::uint32_t kCount = 1000;
+		// Centimeters between demo actors. The position check allows 0.01 around i times this.
 		constexpr float kSpacing = 100.f;
+		// The nonce has to come back before spawn or the dump can be trusted.
 		Message ping;
 		ping.type = kPing;
 		ping.id = next_id++;
@@ -277,6 +302,7 @@ int main(int argc, char** argv) {
 			return Fail("ping nonce");
 		}
 
+		// ACK value 1 means Exec accepted the command, not merely that a reply arrived.
 		const char* console = "stat fps";
 		Message exec;
 		exec.type = kConsole;
@@ -294,6 +320,7 @@ int main(int argc, char** argv) {
 			return Fail("exec rejected");
 		}
 
+		// A short count fails the run. demo does not accept a partial spawn.
 		Message spawn;
 		spawn.type = kSpawn;
 		spawn.id = next_id++;
@@ -314,6 +341,7 @@ int main(int argc, char** argv) {
 			return 1;
 		}
 
+		// Read positions only after DONE. That reply is what publishes the bulk bytes.
 		Message dump;
 		dump.type = kDump;
 		dump.id = next_id++;
@@ -347,6 +375,7 @@ int main(int argc, char** argv) {
 		}
 		std::printf("spawned %u\n", spawned.value);
 	} else if (opt.command == "ping") {
+		// Same nonce as demo. The printed value is the one the plugin echoed.
 		Message msg;
 		msg.type = kPing;
 		msg.id = next_id++;
@@ -367,6 +396,7 @@ int main(int argc, char** argv) {
 		}
 		std::printf("pong %llx\n", static_cast<unsigned long long>(got.nonce));
 	} else {
+		// exec. The joined arguments are the raw CONSOLE payload.
 		if (opt.exec.size() > kMaxPayload) {
 			return Fail("command too long");
 		}
@@ -389,6 +419,8 @@ int main(int argc, char** argv) {
 		std::printf("ok %u\n", ack.value);
 	}
 
+	// ping, exec, and demo ask the editor to quit, then wait for exit code 0.
+	// launch returned above and does not reach this.
 	{
 		Message quit;
 		quit.type = kQuit;

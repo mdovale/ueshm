@@ -14,6 +14,7 @@ TArray<AStaticMeshActor*> Spawned;
 
 namespace {
 
+// Encode `reply` and push it. False if the ring refuses the record.
 bool PushReply(Ring& replies, const Message& reply) {
 	unsigned char buf[16 + kMaxPayload + 8];
 	const std::uint32_t occ = Encode(reply, buf, sizeof(buf));
@@ -24,6 +25,7 @@ bool PushReply(Ring& replies, const Message& reply) {
 	return true;
 }
 
+// A reply of `type` that copies the command id. The payload length stays 0.
 Message Reply(const Message& command, std::uint16_t type) {
 	Message out;
 	out.type = type;
@@ -33,6 +35,8 @@ Message Reply(const Message& command, std::uint16_t type) {
 
 }  // namespace
 
+// False after QUIT, once its ACK is on the reply ring.
+// DUMP writes positions at `bulk` before that reply.
 bool DispatchCommand(
 	const Message& command, Ring& replies, UWorld* world, unsigned char* bulk, std::uint32_t bulk_bytes) {
 	if (command.type == kPing && command.size == sizeof(PingPayload)) {

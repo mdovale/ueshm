@@ -8,6 +8,7 @@
 
 namespace {
 
+// Double-quote one CreateProcess argument, escaping embedded quotes.
 std::string Quote(const std::string& arg) {
 	std::string out = "\"";
 	for (char c : arg) {
@@ -22,10 +23,12 @@ std::string Quote(const std::string& arg) {
 
 }  // namespace
 
+// Take `other`'s child. `other` no longer owns it.
 Process::Process(Process&& other) noexcept : handle_(other.handle_) {
 	other.handle_ = 0;
 }
 
+// Wait for this child, then take `other`'s.
 Process& Process::operator=(Process&& other) noexcept {
 	if (this != &other) {
 		if (handle_ != 0) {
@@ -37,12 +40,14 @@ Process& Process::operator=(Process&& other) noexcept {
 	return *this;
 }
 
+// Wait for the child if one is still owned. Does not kill it.
 Process::~Process() {
 	if (handle_ != 0) {
 		Wait();
 	}
 }
 
+// Start `args[0]` with the rest of `args`. Empty if the spawn fails.
 Process Process::Launch(const std::vector<std::string>& args) {
 	if (args.empty()) {
 		return {};
@@ -79,6 +84,7 @@ Process Process::Launch(const std::vector<std::string>& args) {
 	return process;
 }
 
+// Block until exit. The status, or -1 if no child is owned.
 int Process::Wait() {
 	if (handle_ == 0) {
 		return -1;
@@ -95,6 +101,7 @@ int Process::Wait() {
 	return static_cast<int>(code);
 }
 
+// True once the process has exited. Leaves a running process alone.
 bool Process::TryWait(int* code) {
 	if (handle_ == 0 || code == nullptr) {
 		return false;
@@ -115,6 +122,7 @@ bool Process::TryWait(int* code) {
 	return true;
 }
 
+// Kill the child. Does not wait.
 void Process::Terminate() {
 	if (handle_ != 0) {
 		TerminateProcess(reinterpret_cast<HANDLE>(handle_), 1);

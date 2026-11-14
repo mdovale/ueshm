@@ -7,10 +7,12 @@
 
 namespace {
 
+// Windows mapping name: Local\ plus the logical name.
 std::string ObjectName(const std::string& logical) {
 	return "Local\\" + logical;
 }
 
+// Print `what` and the Win32 code for `name`.
 void Fail(const char* what, const std::string& name, unsigned long err) {
 	std::fprintf(stderr, "shm %s %s: %lu\n", what, name.c_str(), err);
 }
@@ -26,6 +28,7 @@ struct SectionBasic {
 static_assert(sizeof(void*) == 8, "Win64");
 static_assert(sizeof(SectionBasic) == 24, "section basic");
 
+// Byte length of `handle`. 0 if both size queries fail.
 std::uint32_t MappingSize(HANDLE handle, void* view) {
 	using NtQuerySectionFn = long(__stdcall*)(void*, unsigned long, void*, unsigned long, unsigned long*);
 	auto query = reinterpret_cast<NtQuerySectionFn>(
@@ -47,6 +50,7 @@ std::uint32_t MappingSize(HANDLE handle, void* view) {
 
 }  // namespace
 
+// Take `other`'s mapping. `other` is left empty.
 ShmRegion::ShmRegion(ShmRegion&& other) noexcept
 	: data_(other.data_),
 	  size_(other.size_),
@@ -59,6 +63,7 @@ ShmRegion::ShmRegion(ShmRegion&& other) noexcept
 	other.owner_ = false;
 }
 
+// Close this mapping, then take `other`'s.
 ShmRegion& ShmRegion::operator=(ShmRegion&& other) noexcept {
 	if (this != &other) {
 		Close();
@@ -75,8 +80,10 @@ ShmRegion& ShmRegion::operator=(ShmRegion&& other) noexcept {
 	return *this;
 }
 
+// Unmap. The creator also removes the object name.
 ShmRegion::~ShmRegion() { Close(); }
 
+// Unmap, and remove the name if this side created the object.
 void ShmRegion::Close() {
 	if (data_ != nullptr) {
 		UnmapViewOfFile(data_);
@@ -91,6 +98,7 @@ void ShmRegion::Close() {
 	size_ = 0;
 }
 
+// Zero-filled mapping of `size` bytes. Empty if the name is in use or the call fails.
 ShmRegion ShmRegion::Create(const std::string& name, std::uint32_t size) {
 	if (name.empty() || size == 0) {
 		return {};
@@ -124,6 +132,7 @@ ShmRegion ShmRegion::Create(const std::string& name, std::uint32_t size) {
 	return region;
 }
 
+// Map an existing object. Does not remove the name. Empty on failure.
 ShmRegion ShmRegion::Open(const std::string& name) {
 	if (name.empty()) {
 		return {};

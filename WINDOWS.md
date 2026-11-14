@@ -2,6 +2,8 @@
 
 Visual Studio builds `uectl` and the five tests. The Unreal plugin is a second build, done by Unreal's own build script with the same Visual Studio C++ tools.
 
+The command behavior is `docs/tool.md`. The region layout is `docs/protocol.md`. The CMake flags, the test names, and the ways a run fails before the protocol is involved are `docs/build.md`. The commands below are unchanged: this install note does not add `--window` or `step`. Those are specified and not in the binary.
+
 ## 1. Install the tools
 
 Install Visual Studio 2022 17.8 or newer, or Visual Studio 2026. In the installer, select **Desktop development with C++**. This engine wants the MSVC toolset **14.44** (Visual Studio 2022 17.14) or **14.50** (Visual Studio 2026), and a Windows SDK. The preferred SDK is 10.0.22621. CMake comes with that workload.

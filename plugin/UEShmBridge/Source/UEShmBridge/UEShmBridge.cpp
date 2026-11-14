@@ -22,6 +22,7 @@ DEFINE_LOG_CATEGORY_STATIC(LogUEShmBridge, Log, All);
 
 namespace {
 
+// First Game or PIE world, or null. Editor worlds do not count.
 UWorld* FindGameWorld() {
 	if (!GEngine) {
 		return nullptr;
@@ -40,6 +41,7 @@ UWorld* FindGameWorld() {
 class FUEShmBridgeModule : public IModuleInterface
 {
 public:
+	// Open -ShmName and register the ticker. No name, or a failed open, registers nothing.
 	void StartupModule() override
 	{
 		FString value;
@@ -55,6 +57,7 @@ public:
 		Ticker = FTSTicker::GetCoreTicker().AddTicker(FTickerDelegate::CreateRaw(this, &FUEShmBridgeModule::Tick));
 	}
 
+	// Remove the ticker.
 	void ShutdownModule() override
 	{
 		if (Ticker.IsValid()) {
@@ -63,6 +66,7 @@ public:
 	}
 
 private:
+	// Bump the heartbeat, publish ue_ready once, and drain up to 64 commands. Stays registered.
 	bool Tick(float)
 	{
 		auto* header = reinterpret_cast<Header*>(Region.Data());
