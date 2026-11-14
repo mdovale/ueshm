@@ -353,10 +353,11 @@ int main(int argc, char** argv) {
 		DonePayload done;
 		std::memcpy(&done, reply.payload, sizeof(done));
 		const std::uint32_t expect_bytes = 4u + kCount * 12u;
-		if (done.bytes != expect_bytes || done.bytes > header->bulk_bytes) {
+		if (done.bytes != expect_bytes || done.bytes > header->ue_bulk_bytes) {
 			return Fail("dump size");
 		}
-		const unsigned char* cursor = base + header->bulk_off;
+		// Engine half only. demo does not write the tool half.
+		const unsigned char* cursor = base + header->ue_bulk_off;
 		std::uint32_t count = 0;
 		std::memcpy(&count, cursor, sizeof(count));
 		cursor += sizeof(count);

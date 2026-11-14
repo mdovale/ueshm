@@ -37,9 +37,11 @@ All of these run on the game thread, inside the drain. Replies are pushed before
 
 `CONSOLE` copies at most 1024 payload bytes, writes a NUL, and calls `GEngine->Exec` on the game world. `ACK` carries `u32` 1 or 0.
 
-`SPAWN` reads `u32 count` and `f32 spacing`. The count is capped with `(bulk_bytes - 4) / 12`. Previous actors are dropped. Each new actor is an `AStaticMeshActor` spawned at the origin with `AlwaysSpawn`, set movable, then moved to `(i * spacing, 0, 0)`. `ACK` carries how many were spawned. No mesh is assigned. Under `-nullrhi` there is nothing to draw, and the position still exists.
+`SPAWN` reads `u32 count` and `f32 spacing`. The count is capped with `(ue_bulk_bytes - 4) / 12`. Previous actors are dropped. Each new actor is an `AStaticMeshActor` spawned at the origin with `AlwaysSpawn`, set movable, then moved to `(i * spacing, 0, 0)`. `ACK` carries how many were spawned. No mesh is assigned. Under `-nullrhi` there is nothing to draw, and the position still exists.
 
-`DUMP` computes `4 + count * 12`. When that fits in `bulk_bytes`, it writes `u32 count` and then `count` triples of `f32` at `bulk_off`, then pushes `DONE` with that byte count. When it does not fit, the handler falls through to `ERR` and does not write the blob.
+`DUMP` computes `4 + count * 12`. When that fits in the engine half, it writes `u32 count` and then `count` triples of `f32` at `ue_bulk_off`, then pushes `DONE` with that byte count. When it does not fit, the handler falls through to `ERR` and does not write the blob. The handler does not store into the tool half.
+
+On each popped command the ticker stores `last_cmd_type` and the low 32 bits of the id. Each reply stores `last_rsp_type` and the low 32 bits of the id before the reply ring is published. That mirror is not the fence.
 
 `QUIT` pushes `ACK` with an empty payload, calls `FPlatformMisc::RequestExit(false)`, and returns false.
 

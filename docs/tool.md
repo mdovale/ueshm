@@ -59,7 +59,7 @@ Ids start at 1 and increase by 1 for each request, including `QUIT`.
 1. `PING` with the same nonce as `ping`. A mismatch is `ping nonce`.
 2. `CONSOLE` `stat fps`. Anything other than `ACK` value 1 fails.
 3. `SPAWN` with count 1000 and spacing 100. `spawned` must be 1000.
-4. `DUMP`. `DONE.bytes` must be `4 + 1000 * 12`, and that must fit in `bulk_bytes`. The blob's count must be 1000. Actor `i` must satisfy `|x - i * 100| <= 0.01` and `y == z == 0`.
+4. `DUMP`. `DONE.bytes` must be `4 + 1000 * 12`, and that must fit in the engine half. The blob's count must be 1000. Actor `i` must satisfy `|x - i * 100| <= 0.01` and `y == z == 0`. `demo` does not write the tool half.
 5. `QUIT`.
 
 It prints `spawned 1000`. The position check is the acceptance test for the bulk fence: the tool reads the engine's bytes only after `DONE`.

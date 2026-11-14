@@ -2,7 +2,7 @@
 
 This file owns the shared-memory layout: header, rings, records, orders, bulk, and fences. Other docs point here instead of restating it.
 
-The binary speaks version 1. Version 2 is the contract for the rest of M1. It is specified below and is not in the tree yet. Until it lands, `kVersion` stays 1, the pad at offset 48 stays zero, and there is one bulk writer.
+The binary speaks version 2. Bulk is split into a tool half and an engine half. `STEP` and `STEP_ACK` are reserved and not dispatched yet. Sync, `uectl step`, and `--window` are not in the tree.
 
 Both sides compile the same `common/protocol.h` and `common/ring.h`. Shared structs use fixed-width integers, explicit alignment, and little-endian stores. They contain no pointers, no STL, and no exceptions. `static_assert` pins `sizeof` and `offsetof` on both builds.
 
@@ -28,7 +28,7 @@ macOS rejects a POSIX shared-memory name longer than 31 bytes, including the lea
 | Offset | Field | Type | Writer | Meaning |
 |---|---|---|---|---|
 | 0 | `magic` | atomic `u32` | tool, last | `0x48534555` (`UESH`) once the header is published |
-| 4 | `version` | `u32` | tool | `1` in this binary |
+| 4 | `version` | `u32` | tool | `2` |
 | 8 | `total_size` | `u32` | tool | mapped bytes |
 | 12 | `state` | atomic `u32` | both | `0` created, `1` ue_ready, `2` closing |
 | 16 | `tool_heartbeat` | atomic `u32` | tool | incremented by 1 on every poll |
@@ -37,9 +37,19 @@ macOS rejects a POSIX shared-memory name longer than 31 bytes, including the lea
 | 28 | `cmd_bytes` | `u32` | tool | 65536. Data capacity, not the mapped ring span |
 | 32 | `rsp_off` | `u32` | tool | 65920. First byte of the reply ring |
 | 36 | `rsp_bytes` | `u32` | tool | 65536 |
-| 40 | `bulk_off` | `u32` | tool | 131712. First bulk byte |
+| 40 | `bulk_off` | `u32` | tool | 131712. First byte of the whole bulk span |
 | 44 | `bulk_bytes` | `u32` | tool | `total_size - bulk_off`. 16645504 in the default 16 MiB region |
-| 48 | `pad` | 80 bytes | tool | zero |
+| 48 | `flags` | `u32` | tool, before `magic` | bit 0 is sync. Clear in every command that runs today |
+| 52 | `frame` | atomic `u32` | plugin | completed steps. Stays 0 until a step is ticked |
+| 56 | `last_cmd_type` | `u32` | plugin, when a command is popped | wire type |
+| 60 | `last_cmd_id` | `u32` | plugin | low 32 bits of the ring id |
+| 64 | `last_rsp_type` | `u32` | plugin, before the reply is pushed | wire type |
+| 68 | `last_rsp_id` | `u32` | plugin | low 32 bits of the ring id |
+| 72 | `tool_bulk_off` | `u32` | tool | 131712. Same as `bulk_off` |
+| 76 | `tool_bulk_bytes` | `u32` | tool | `bulk_bytes / 2`, rounded down to a multiple of 8. 8322752 by default |
+| 80 | `ue_bulk_off` | `u32` | tool | 8454464 by default |
+| 84 | `ue_bulk_bytes` | `u32` | tool | the rest of the span. 8322752 by default |
+| 88 | `pad` | 40 bytes | tool | zero |
 
 `state` moves `0 → 1` when the plugin first sees a `UWorld` of type Game or PIE, with a release store. The tool acquire-loads it. The tool stores `2` in its session destructor, including after a timeout or a crash. Heartbeats use relaxed adds. They are liveness counters, not fences.
 
@@ -82,7 +92,7 @@ u32 size | u16 type | u16 pad | u64 id | payload | pad to 8
 
 Local `Message` objects are not stored in the region. Only the encoded bytes are.
 
-## Orders in version 1
+## Orders
 
 | Type | Value | Payload | Reply |
 |---|---|---|---|
@@ -96,15 +106,19 @@ Anything else, including a known type with the wrong payload size, is `ERR` (104
 
 `CONSOLE` is handed to `GEngine->Exec` on the game world. The handler adds a NUL. `ok` is 1 when `Exec` returns true, and 0 when the engine, the world, or `Exec` refuses it. `demo` sends the bytes `stat fps`.
 
-`SPAWN` replaces any actors a previous `SPAWN` created. Actor `i` is a movable `AStaticMeshActor` with no mesh, at world position `(i * spacing, 0, 0)`, in centimeters. The actor is spawned at the origin, the mesh component is set movable, then the location is applied. A static component would ignore the location. Collision handling is `AlwaysSpawn`. The count is capped to what the bulk area can hold: `(bulk_bytes - 4) / 12`. The ack's `spawned` value is how many actors exist after the call, which can be less than `count` if a spawn returns null.
+`SPAWN` replaces any actors a previous `SPAWN` created. Actor `i` is a movable `AStaticMeshActor` with no mesh, at world position `(i * spacing, 0, 0)`, in centimeters. The actor is spawned at the origin, the mesh component is set movable, then the location is applied. A static component would ignore the location. Collision handling is `AlwaysSpawn`. The count is capped to what the engine half can hold: `(ue_bulk_bytes - 4) / 12`. The ack's `spawned` value is how many actors exist after the call, which can be less than `count` if a spawn returns null.
 
-`DUMP` writes `u32 count`, then `count × 3 × f32` positions, in spawn order, at `bulk_off`. It writes the blob first, then pushes `DONE`. `DONE.bytes` equals `4 + count * 12`. A blob that does not fit in `bulk_bytes` gets `ERR` and does not write. The tool checks `|x - i * spacing| <= 0.01` and `y == z == 0` only after the matching `DONE`.
+`DUMP` writes `u32 count`, then `count × 3 × f32` positions, in spawn order, at `ue_bulk_off`. It writes the blob first, then pushes `DONE`. `DONE.bytes` equals `4 + count * 12`. A blob that does not fit in `ue_bulk_bytes` gets `ERR` and does not write. The tool checks `|x - i * spacing| <= 0.01` and `y == z == 0` only after the matching `DONE`. `demo` does not write the tool half.
 
 `QUIT` pushes `ACK`, then calls `FPlatformMisc::RequestExit(false)`. The handler returns after that, and the ticker stops draining for the rest of that tick.
 
-## Bulk in version 1
+## Bulk
 
-The engine is the only writer. The tool reads bulk only after the matching `DONE`. There is no lock and no generation counter. The reply's release store is the fence: the plugin finishes the `memcpy` into bulk, then release-stores the reply ring's `head`, and the tool acquire-loads that `head` before it reads bulk.
+`bulk_off` and `bulk_bytes` name the whole span. The halves are a split of that span, not a third region. The tool is the only writer of `[tool_bulk_off, tool_bulk_off + tool_bulk_bytes)`. The engine is the only writer of the engine half. Either side may read either half. No byte has two writers. There is no lock, seqlock, or generation counter.
+
+The tool reads the engine half only after the matching reply. The plugin finishes the `memcpy`, stores `last_rsp_*`, then release-stores the reply ring's `head`. The tool acquire-loads that `head` before it reads the engine half. The engine reads the tool half only while handling a command that says those bytes are already written. Nothing in the tree does that read yet. `STEP` is the command that will.
+
+`last_cmd_*` and `last_rsp_*` are a mirror. They are not a fence. The reply ring is the fence for engine-half bytes.
 
 ## Fences
 
@@ -117,42 +131,9 @@ The engine is the only writer. The tool reads bulk only after the matching `DONE
 | ring `tail` | release, after the consumer has copied | the slot can be reused |
 | heartbeats | relaxed | nothing |
 
-## Version 2 contract
+## Reserved order
 
-Not compiled in yet. Steps 2–4 of M1 implement this section. `docs/tool.md` and `docs/plugin.md` describe the command and the engine behavior that go with it. The offsets here win if another doc disagrees.
-
-`kVersion` becomes 2. The header stays 128 bytes. Offsets 0 through 44 do not move. The new fields occupy the pad.
-
-| Offset | Field | Type | Who writes it |
-|---|---|---|---|
-| 48 | `flags` | `u32` | tool, before `magic` |
-| 52 | `frame` | atomic `u32` | plugin, after a completed step |
-| 56 | `last_cmd_type` | `u32` | plugin, when a command is popped |
-| 60 | `last_cmd_id` | `u32` | plugin. Low 32 bits of the ring id |
-| 64 | `last_rsp_type` | `u32` | plugin, when a reply is pushed |
-| 68 | `last_rsp_id` | `u32` | plugin. Low 32 bits of the ring id |
-| 72 | `tool_bulk_off` | `u32` | tool, in `InitRegion` |
-| 76 | `tool_bulk_bytes` | `u32` | tool |
-| 80 | `ue_bulk_off` | `u32` | tool |
-| 84 | `ue_bulk_bytes` | `u32` | tool |
-| 88 | `pad` | 40 bytes | zero |
-
-`flags` bit 0 is sync. Every other bit stays 0. The ring id on the wire stays `u64`. The header mirror keeps the low half so the HUD can read it as a `u32`.
-
-`bulk_off` and `bulk_bytes` still name the whole bulk span. The halves are a split of that span:
-
-- The tool half starts at `bulk_off`. Its length is `bulk_bytes / 2`, rounded down to a multiple of 8.
-- The engine half starts at `tool_bulk_off + tool_bulk_bytes` and runs through the last mapped byte.
-
-`InitRegion` writes `flags`, the four half fields, and `frame = 0` before the release store of `magic`. The plugin reads `flags` only after `magic` and `version` match.
-
-The tool is the only writer of the tool half. The engine is the only writer of the engine half. Either side may read either half. No byte has two writers. There is still no lock, seqlock, or generation counter in the region.
-
-`DUMP` writes its position blob at `ue_bulk_off`. The spawn cap becomes `(ue_bulk_bytes - 4) / 12`. Half of the default region still holds 1000 actors.
-
-`last_cmd_*` and `last_rsp_*` are a HUD mirror. They are not a fence. The reply ring is still the fence for engine-half bytes. The engine reads the tool half while handling `STEP`, which is after the tool has finished writing it and pushed that record.
-
-New order:
+Not dispatched. A `STEP` record falls through to `ERR` with type 6. The numbers are fixed so a later build cannot reuse them. The behavior below is what step 3 implements. It is not what this binary does.
 
 | Type | Value | Payload | Reply |
 |---|---|---|---|

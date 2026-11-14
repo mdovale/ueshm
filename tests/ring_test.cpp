@@ -79,6 +79,26 @@ int TestEmpty() {
 	if (header->cmd_bytes != Ring::kCapacity || header->bulk_off != kBulkOff) {
 		return Fail("offsets");
 	}
+	if (header->flags != 0 || header->frame.load(std::memory_order_acquire) != 0) {
+		return Fail("flags");
+	}
+	// The halves share no byte, and the engine half can hold the demo dump.
+	if (header->tool_bulk_off != header->bulk_off || (header->tool_bulk_bytes & 7u) != 0 ||
+		header->ue_bulk_off != header->tool_bulk_off + header->tool_bulk_bytes ||
+		header->tool_bulk_bytes + header->ue_bulk_bytes != header->bulk_bytes ||
+		header->ue_bulk_bytes < 4u + 1000u * 12u) {
+		return Fail("bulk split");
+	}
+	auto* bytes = reinterpret_cast<unsigned char*>(header);
+	const float speed = 100.f;
+	std::memcpy(bytes + header->tool_bulk_off, &speed, sizeof(speed));
+	const std::uint32_t marker = 0xA5A5A5A5u;
+	std::memcpy(bytes + header->ue_bulk_off, &marker, sizeof(marker));
+	float still = 0.f;
+	std::memcpy(&still, bytes + header->tool_bulk_off, sizeof(still));
+	if (still != speed) {
+		return Fail("halves alias");
+	}
 	Ring ring = region.cmd();
 	Message msg;
 	if (PopMessage(ring, &msg) || ring.Head() != ring.Tail()) {

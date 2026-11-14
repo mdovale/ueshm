@@ -101,7 +101,11 @@ private:
 			if (!Decode(buf, size, &command)) {
 				break;
 			}
-			if (!DispatchCommand(command, replies, world, base + header->bulk_off, header->bulk_bytes)) {
+			// Low 32 bits. The ring id stays 64-bit; this mirror is what a later HUD can read.
+			header->last_cmd_type = command.type;
+			header->last_cmd_id = static_cast<std::uint32_t>(command.id);
+			if (!DispatchCommand(
+					command, replies, world, base + header->ue_bulk_off, header->ue_bulk_bytes, header)) {
 				break;
 			}
 		}

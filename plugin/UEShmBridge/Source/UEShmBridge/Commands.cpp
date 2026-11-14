@@ -14,8 +14,12 @@ TArray<AStaticMeshActor*> Spawned;
 
 namespace {
 
-// Encode `reply` and push it. False if the ring refuses the record.
-bool PushReply(Ring& replies, const Message& reply) {
+// Record the reply mirror, then encode and push. False if the ring refuses the record.
+bool PushReply(Ring& replies, const Message& reply, Header* header) {
+	if (header != nullptr) {
+		header->last_rsp_type = reply.type;
+		header->last_rsp_id = static_cast<std::uint32_t>(reply.id);
+	}
 	unsigned char buf[16 + kMaxPayload + 8];
 	const std::uint32_t occ = Encode(reply, buf, sizeof(buf));
 	if (occ == 0 || !replies.Push(buf, occ)) {
@@ -36,14 +40,19 @@ Message Reply(const Message& command, std::uint16_t type) {
 }  // namespace
 
 // False after QUIT, once its ACK is on the reply ring.
-// DUMP writes positions at `bulk` before that reply.
+// DUMP writes positions at `bulk` before that reply. `bulk` is the engine half.
 bool DispatchCommand(
-	const Message& command, Ring& replies, UWorld* world, unsigned char* bulk, std::uint32_t bulk_bytes) {
+	const Message& command,
+	Ring& replies,
+	UWorld* world,
+	unsigned char* bulk,
+	std::uint32_t bulk_bytes,
+	Header* header) {
 	if (command.type == kPing && command.size == sizeof(PingPayload)) {
 		Message out = Reply(command, kPong);
 		out.size = sizeof(PingPayload);
 		std::memcpy(out.payload, command.payload, sizeof(PingPayload));
-		PushReply(replies, out);
+		PushReply(replies, out, header);
 		return true;
 	}
 
@@ -60,7 +69,7 @@ bool DispatchCommand(
 		AckPayload ack;
 		ack.value = ran ? 1u : 0u;
 		std::memcpy(out.payload, &ack, sizeof(ack));
-		PushReply(replies, out);
+		PushReply(replies, out, header);
 		return true;
 	}
 
@@ -91,7 +100,7 @@ bool DispatchCommand(
 		AckPayload ack;
 		ack.value = static_cast<std::uint32_t>(Spawned.Num());
 		std::memcpy(out.payload, &ack, sizeof(ack));
-		PushReply(replies, out);
+		PushReply(replies, out, header);
 		return true;
 	}
 
@@ -116,14 +125,14 @@ bool DispatchCommand(
 			DonePayload done;
 			done.bytes = nbytes;
 			std::memcpy(out.payload, &done, sizeof(done));
-			PushReply(replies, out);
+			PushReply(replies, out, header);
 			return true;
 		}
 	}
 
 	if (command.type == kQuit) {
 		Message out = Reply(command, kAck);
-		PushReply(replies, out);
+		PushReply(replies, out, header);
 		FPlatformMisc::RequestExit(false);
 		return false;
 	}
@@ -133,6 +142,6 @@ bool DispatchCommand(
 	ErrPayload err;
 	err.type = command.type;
 	std::memcpy(out.payload, &err, sizeof(err));
-	PushReply(replies, out);
+	PushReply(replies, out, header);
 	return true;
 }

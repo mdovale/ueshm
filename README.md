@@ -2,7 +2,7 @@
 
 `uectl` launches Unreal Engine 5.8 and drives it through one named shared-memory region. The engine side is the `UEShmBridge` plugin. Targets macOS, Windows, and Linux.
 
-The binary speaks protocol version 1. Version 2 is specified and not implemented: a sync flag, a `step` command, an optional window, and a bulk area split between the tool and the engine. `docs/protocol.md` owns that layout.
+The binary speaks protocol version 2. Bulk is split: the tool may write the low half, and `DUMP` writes the high half. Sync, `uectl step`, and `--window` are specified and not implemented. `docs/protocol.md` owns the layout.
 
 ## Architecture
 
@@ -71,13 +71,11 @@ Run, again with an absolute project path:
 
 What each command sends, and what the session does on failure, is in `docs/tool.md`.
 
-## Version 2 contract
+## Not built yet
 
-Not in the binary. When it lands, `docs/protocol.md` is the byte layout and the two files below are the behavior.
+`docs/protocol.md` holds the reserved `STEP` numbers. `docs/tool.md` and `docs/plugin.md` hold the behavior that is still to come.
 
-- The header stays 128 bytes. Version becomes 2. New fields occupy the pad at offset 48, including `flags`, `frame`, and the two bulk halves.
-- The tool is the only writer of the low half of bulk. The engine is the only writer of the high half. `DUMP` writes at the start of the engine half.
-- `flags` bit 0 selects sync. `uectl step --dt <seconds> --count <n>` sets it, writes a speed into the tool half, and checks positions after that many stepped frames. `ping`, `exec`, `demo`, and `launch` leave it clear unless `--sync` is passed.
+- `flags` bit 0 selects sync. `uectl step --dt <seconds> --count <n>` will set it, write a speed into the tool half, and check positions after that many stepped frames. `ping`, `exec`, `demo`, and `launch` leave the bit clear unless `--sync` is passed.
 - `--window` drops `-nullrhi` and shows a HUD. Headless `demo` does not change: spawn count 1000, spacing 100, no mesh, no sync.
 
 ## Failed runs

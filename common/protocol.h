@@ -10,8 +10,10 @@
 
 // ASCII "UESH". The plugin treats any other value as an unpublished header.
 constexpr std::uint32_t kMagic = 0x48534555;
-// Layout id. Any other value leaves state at 0, so the tool hits the ready timeout.
-constexpr std::uint32_t kVersion = 1;
+// Layout id. A plugin built against another value never stores ue_ready.
+constexpr std::uint32_t kVersion = 2;
+// flags bit 0, and only that bit. Free-running sessions leave it clear.
+constexpr std::uint32_t kFlagSync = 1u;
 // Both sides map the header as this many bytes. The command ring starts on the next byte.
 constexpr std::uint32_t kHeaderBytes = 128;
 // Create size. Must cover the header, both rings, and a bulk dump of 1000 positions.
@@ -36,6 +38,8 @@ constexpr std::uint16_t kSpawn = 3;
 constexpr std::uint16_t kDump = 4;
 // Request type. Payload is empty. After its ACK the handler stops the drain.
 constexpr std::uint16_t kQuit = 5;
+// Request type, between the handled requests and the replies. Not dispatched yet, so it is ERR.
+constexpr std::uint16_t kStep = 6;
 // Reply type, above the request range. Payload is the nonce from the PING it answers.
 constexpr std::uint16_t kPong = 101;
 // Reply type, above the request range. Payload is one u32, except QUIT, which sends none.
@@ -44,6 +48,8 @@ constexpr std::uint16_t kAck = 102;
 constexpr std::uint16_t kDone = 103;
 // Reply type, above the request range. Payload is the request type that failed, under the same id.
 constexpr std::uint16_t kErr = 104;
+// Reply type, above kErr. Reserved for STEP. Not produced until a step is actually ticked.
+constexpr std::uint16_t kStepAck = 105;
 
 // First byte of the command ring. Equal to the header size, so the two do not overlap.
 constexpr std::uint32_t kCmdOff = kHeaderBytes;
@@ -65,7 +71,17 @@ struct Header {
 	std::uint32_t rsp_bytes;
 	std::uint32_t bulk_off;
 	std::uint32_t bulk_bytes;
-	unsigned char pad[80];
+	std::uint32_t flags;
+	std::atomic<std::uint32_t> frame;
+	std::uint32_t last_cmd_type;
+	std::uint32_t last_cmd_id;
+	std::uint32_t last_rsp_type;
+	std::uint32_t last_rsp_id;
+	std::uint32_t tool_bulk_off;
+	std::uint32_t tool_bulk_bytes;
+	std::uint32_t ue_bulk_off;
+	std::uint32_t ue_bulk_bytes;
+	unsigned char pad[40];
 };
 
 static_assert(sizeof(Header) == kHeaderBytes, "header pad");
@@ -81,10 +97,23 @@ static_assert(offsetof(Header, rsp_off) == 32, "rsp_off");
 static_assert(offsetof(Header, rsp_bytes) == 36, "rsp_bytes");
 static_assert(offsetof(Header, bulk_off) == 40, "bulk_off");
 static_assert(offsetof(Header, bulk_bytes) == 44, "bulk_bytes");
-static_assert(offsetof(Header, pad) == 48, "pad");
+static_assert(offsetof(Header, flags) == 48, "flags");
+static_assert(offsetof(Header, frame) == 52, "frame");
+static_assert(offsetof(Header, last_cmd_type) == 56, "last_cmd_type");
+static_assert(offsetof(Header, last_cmd_id) == 60, "last_cmd_id");
+static_assert(offsetof(Header, last_rsp_type) == 64, "last_rsp_type");
+static_assert(offsetof(Header, last_rsp_id) == 68, "last_rsp_id");
+static_assert(offsetof(Header, tool_bulk_off) == 72, "tool_bulk_off");
+static_assert(offsetof(Header, tool_bulk_bytes) == 76, "tool_bulk_bytes");
+static_assert(offsetof(Header, ue_bulk_off) == 80, "ue_bulk_off");
+static_assert(offsetof(Header, ue_bulk_bytes) == 84, "ue_bulk_bytes");
+static_assert(offsetof(Header, pad) == 88, "pad");
 static_assert(kCmdOff == 128, "cmd_off");
 static_assert(kRspOff == 65920, "rsp_off");
 static_assert(kBulkOff == 131712, "bulk_off");
+static_assert(kFlagSync == 1u, "sync bit");
+static_assert(kStep > kQuit && kStep < kPong, "step between request and reply");
+static_assert(kStepAck > kErr, "step ack in the reply range");
 
 struct Prefix {
 	std::uint32_t size;
@@ -129,7 +158,7 @@ struct Message {
 	unsigned char payload[kMaxPayload]{};
 };
 
-// Zero the mapping, fill the header and both rings, then release-store magic.
+// Zero the mapping, fill the header, both rings, and the bulk halves, then release-store magic.
 inline bool InitRegion(void* base, std::uint32_t total_size) {
 	if (base == nullptr || total_size < kBulkOff) {
 		return false;
@@ -142,6 +171,7 @@ inline bool InitRegion(void* base, std::uint32_t total_size) {
 	new (&header->state) std::atomic<std::uint32_t>(kStateCreated);
 	new (&header->tool_heartbeat) std::atomic<std::uint32_t>(0);
 	new (&header->ue_heartbeat) std::atomic<std::uint32_t>(0);
+	new (&header->frame) std::atomic<std::uint32_t>(0);
 	header->version = kVersion;
 	header->total_size = total_size;
 	header->cmd_off = kCmdOff;
@@ -150,6 +180,12 @@ inline bool InitRegion(void* base, std::uint32_t total_size) {
 	header->rsp_bytes = Ring::kCapacity;
 	header->bulk_off = kBulkOff;
 	header->bulk_bytes = total_size - kBulkOff;
+	header->flags = 0;
+	// Low half, multiple of 8. The engine half is whatever remains, so the spans do not share a byte.
+	header->tool_bulk_off = header->bulk_off;
+	header->tool_bulk_bytes = (header->bulk_bytes / 2u) & ~7u;
+	header->ue_bulk_off = header->tool_bulk_off + header->tool_bulk_bytes;
+	header->ue_bulk_bytes = header->bulk_bytes - header->tool_bulk_bytes;
 	Ring::Init(bytes + kCmdOff);
 	Ring::Init(bytes + kRspOff);
 	header->magic.store(kMagic, std::memory_order_release);
