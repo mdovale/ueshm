@@ -119,6 +119,17 @@
 % Inline legend swatch.
 \newcommand{\key}[1]{\textcolor{#1}{\rule[-0.15ex]{1.5ex}{1.5ex}}\hspace{0.45em}}
 
+\newcommand{\headfont}{\fontsize{6.5}{8}\selectfont\bfseries\addfontfeatures{LetterSpace=10}}
+% Rating at (#1,#2): 0 empty, 1 half, 2 full.
+\newcommand{\Ball}[3]{%
+  \ifcase#3\relax
+  \or \fill[ink] (#1,{#2-0.075}) arc[start angle=-90, end angle=90, radius=0.075] -- cycle;
+  \or \fill[ink] (#1,#2) circle[radius=0.075];
+  \fi
+  \draw[ink, line width=0.5pt] (#1,#2) circle[radius=0.075];
+}
+\newcommand{\BallKey}[1]{\tikz[baseline=-0.6ex]{\Ball{0}{0}{#1}}}
+
 % Two-line label centered at (#1,#2).
 \newcommand{\Two}[4]{%
   \node[anchor=base, font=\cellfont] at (#1,{#2+0.05}) {#3};
@@ -168,7 +179,58 @@
 % ---------------------------------------------------------------- 1
 \begin{frame}[plain]
 \begin{page}
-  \Chrome{01\quad ARCHITECTURE}{Shared region}
+  \Chrome{01\quad CONTEXT}{IPC options}
+    {Rated for one local tool: small commands, and large data in both directions.}
+
+  \foreach \i/\t in {0/PER MESSAGE, 1/{BULK, BOTH WAYS}, 2/REACH, 3/ENGINE SIDE}
+    \node[anchor=base west, font=\headfont, text=muted] at ({3.9+\i*2.775},6.14) {\t};
+  \node[anchor=base west, font=\headfont, text=muted] at (1.2,6.14) {METHOD};
+  \fill[accent!7] (1.0,5.42) rectangle (15.0,6.0);
+  \fill[accent] (1.0,5.42) rectangle (1.06,6.0);
+  \draw[ink, line width=0.6pt] (1.0,6.0) -- (15.0,6.0);
+  \foreach \y in {5.42,4.84,4.26,3.68}
+    \draw[rule, line width=0.5pt] (1.0,\y) -- (15.0,\y);
+  \draw[ink, line width=0.6pt] (1.0,3.1) -- (15.0,3.1);
+
+  \foreach \r/\name/\ex/\va/\ta/\vb/\tb/\vc/\tc/\vd/\td in {
+      0/Shared memory/{\texttt{ueshm}}/2/no syscall/2/in place/0/same host/1/custom plugin,
+      1/Loopback TCP/{own framing}/1/{syscall, copy}/1/kernel copy/2/network/1/\texttt{FSocket},
+      2/Remote Control/{HTTP, WebSocket}/0/{syscall, JSON}/0/base64 in JSON/2/network/2/built-in plugin,
+      3/Pipe/{stdin, stdout}/1/{syscall, copy}/1/kernel copy/0/same host/0/stdout only,
+      4/Files/{spool directory}/0/{file I/O}/2/large files/1/shared FS/1/custom plugin} {
+    \pgfmathsetmacro{\ry}{5.71-\r*0.58}
+    \node[anchor=base west, font=\cellfont] at (1.2,{\ry+0.04}) {\name};
+    \node[anchor=base west, font=\tinyfont, text=muted] at (1.2,{\ry-0.19}) {\ex};
+    \foreach \i/\v/\t in {0/\va/\ta, 1/\vb/\tb, 2/\vc/\tc, 3/\vd/\td} {
+      \pgfmathsetmacro{\bx}{3.98+\i*2.775}
+      \pgfmathsetmacro{\by}{\ry+0.005}
+      \Ball{\bx}{\by}{\v}
+      \node[anchor=base west, font=\smallfont] at ({4.16+\i*2.775},{\ry-0.075}) {\t};
+    }
+  }
+
+  \node[anchor=base east, font=\tinyfont, text=muted] at (15.0,2.83)
+    {\BallKey{2}\enspace suits this use\qquad\BallKey{1}\enspace workable\qquad\BallKey{0}\enspace poor fit};
+
+  \fill[eng] (1.0,2.58) rectangle (7.8,2.62);
+  \fill[accent] (8.2,2.58) rectangle (15.0,2.62);
+  \node[anchor=base west, font=\labelfont, text=eng] at (1.0,2.3) {Advantages};
+  \node[anchor=base west, font=\labelfont, text=accent] at (8.2,2.3) {Costs};
+  \node[anchor=north west, font=\bodyfont, text width=6.8cm, align=left] at (1.0,2.12) {%
+    \itm{No syscall per message, only atomics}
+    \itm{Bulk data both ways, with no serialization}
+    \itm{No port, no listener, nothing on the network}};
+  \node[anchor=north west, font=\bodyfont, text width=6.8cm, align=left] at (8.2,2.12) {%
+    \itm{Same host only}
+    % \itm{Ordering enforced via hand-written acquire/release}
+    \itm{A crash can leave the POSIX name behind}};
+\end{page}
+\end{frame}
+
+% ---------------------------------------------------------------- 2
+\begin{frame}[plain]
+\begin{page}
+  \Chrome{02\quad ARCHITECTURE}{Shared region}
     {\texttt{uectl} creates a 16 MiB named region and starts \texttt{UnrealEditor-Cmd}
      with its name. The plugin maps the same region. Neither side takes a lock.}
 
@@ -225,10 +287,10 @@
 \end{page}
 \end{frame}
 
-% ---------------------------------------------------------------- 2
+% ---------------------------------------------------------------- 3
 \begin{frame}[plain]
 \begin{page}
-  \Chrome{02\quad MEMORY}{Region layout}
+  \Chrome{03\quad MEMORY}{Region layout}
     {Offsets are fixed and checked by \texttt{static\_assert} on both sides. \texttt{uectl}
      writes the header, then release-stores \texttt{magic}. The plugin waits for it.}
 
@@ -255,7 +317,7 @@
       0/0/magic/{\texttt{0x48534555}, stored last}/1,
       1/4/version/{\texttt{1}}/0,
       2/8/total\_size/{\texttt{16777216}}/0,
-      3/12/state/{\texttt{0}, \texttt{1}, or \texttt{2}, below}/1,
+      3/12/state/{\texttt{0}, \texttt{1}, or \texttt{2}}/1,
       4/16/tool\_heartbeat/{+1 per \texttt{uectl} poll}/1,
       5/20/ue\_heartbeat/{+1 per plugin tick}/1,
       6/24/cmd\_off/{\texttt{128}}/0,
@@ -287,10 +349,10 @@
 \end{page}
 \end{frame}
 
-% ---------------------------------------------------------------- 3
+% ---------------------------------------------------------------- 4
 \begin{frame}[plain]
 \begin{page}
-  \Chrome{03\quad RINGS}{Rings and records}
+  \Chrome{04\quad RINGS}{Rings and records}
     {Each ring is a single-producer, single-consumer byte queue. A record is a 16-byte
      prefix and up to 1024 payload bytes, padded to 8.}
 
@@ -368,10 +430,10 @@
 \end{page}
 \end{frame}
 
-% ---------------------------------------------------------------- 4
+% ---------------------------------------------------------------- 5
 \begin{frame}[plain]
 \begin{page}
-  \Chrome{04\quad PROTOCOL}{PING round trip}
+  \Chrome{05\quad PROTOCOL}{PING round trip}
     {After \texttt{state} reaches 1, \texttt{uectl} pushes \texttt{PING}. The plugin pops it on its
      next tick and pushes \texttt{PONG} with the same \texttt{id} and nonce.}
 
@@ -450,10 +512,10 @@
 \end{page}
 \end{frame}
 
-% ---------------------------------------------------------------- 5
+% ---------------------------------------------------------------- 6
 \begin{frame}[plain]
 \begin{page}
-  \Chrome{05\quad PROPOSAL}{Tool-driven timestep}
+  \Chrome{06\quad PROPOSAL}{Tool-driven timestep}
     {Today the engine takes each frame's \texttt{dt} from the wall clock, before commands are
      popped. Proposed: each frame waits for a step from \texttt{uectl} and uses its \texttt{dt}.}
   \node[anchor=west, draw=accent, line width=0.6pt, rounded corners=2pt, inner xsep=4pt, inner ysep=2.5pt,
