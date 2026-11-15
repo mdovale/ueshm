@@ -2,7 +2,7 @@
 
 This file owns the shared-memory layout: header, rings, records, orders, bulk, and fences. Other docs point here instead of restating it.
 
-The binary speaks version 2. Bulk is split into a tool half and an engine half. `STEP` is dispatched only when sync is set. `--window` is not in the tree.
+The binary speaks version 2. Bulk is split into a tool half and an engine half. `STEP` is dispatched only when sync is set.
 
 Both sides compile the same `common/protocol.h` and `common/ring.h`. Shared structs use fixed-width integers, explicit alignment, and little-endian stores. They contain no pointers, no STL, and no exceptions. `static_assert` pins `sizeof` and `offsetof` on both builds.
 
@@ -107,7 +107,7 @@ Anything else, including a known type with the wrong payload size, is `ERR` (104
 
 `CONSOLE` is handed to `GEngine->Exec` on the game world. The handler adds a NUL. `ok` is 1 when `Exec` returns true, and 0 when the engine, the world, or `Exec` refuses it. `demo` sends the bytes `stat fps`.
 
-`SPAWN` replaces any actors a previous `SPAWN` created. Actor `i` is a movable `AStaticMeshActor` with no mesh, at world position `(i * spacing, 0, 0)`, in centimeters. The actor is spawned at the origin, the mesh component is set movable, then the location is applied. A static component would ignore the location. Collision handling is `AlwaysSpawn`. The count is capped to what the engine half can hold: `(ue_bulk_bytes - 4) / 12`. The ack's `spawned` value is how many actors exist after the call, which can be less than `count` if a spawn returns null.
+`SPAWN` replaces any actors a previous `SPAWN` created. Actor `i` is a movable `AStaticMeshActor` at world position `(i * spacing, 0, 0)`, in centimeters. The actor is spawned at the origin, the mesh component is set movable, then the location is applied. A static component would ignore the location. Collision handling is `AlwaysSpawn`. The count is capped to what the engine half can hold: `(ue_bulk_bytes - 4) / 12`. The ack's `spawned` value is how many actors exist after the call, which can be less than `count` if a spawn returns null. The mesh, if any, is `docs/plugin.md`.
 
 `DUMP` writes `u32 count`, then `count × 3 × f32` positions, in spawn order, at `ue_bulk_off`. It writes the blob first, then pushes `DONE`. `DONE.bytes` equals `4 + count * 12`. A blob that does not fit in `ue_bulk_bytes` gets `ERR` and does not write. The tool checks `|x - i * spacing| <= 0.01` and `y == z == 0` only after the matching `DONE`. `demo` does not write the tool half.
 

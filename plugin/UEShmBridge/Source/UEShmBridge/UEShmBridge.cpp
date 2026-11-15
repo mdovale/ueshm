@@ -1,10 +1,13 @@
 #include "Commands.h"
+#include "ShmHud.h"
 #include "ShmTimeStep.h"
 
 #include "CoreMinimal.h"
 #include "Containers/Ticker.h"
 #include "Engine/Engine.h"
 #include "Engine/World.h"
+#include "GameFramework/PlayerController.h"
+#include "HAL/IConsoleManager.h"
 #include "Misc/CommandLine.h"
 #include "Misc/Parse.h"
 #include "Modules/ModuleManager.h"
@@ -62,11 +65,21 @@ private:
 	// Sync mode does not pop. The custom timestep is the only consumer then.
 	bool Tick(float)
 	{
+		// Before the header check. Startup frames still count, and a 0-delta idle loop does not.
+		NoteRenderDelta();
 		auto* header = reinterpret_cast<Header*>(Region.Data());
 		if (header->magic.load(std::memory_order_acquire) != kMagic || header->version != kVersion) {
 			return true;
 		}
 		header->ue_heartbeat.fetch_add(1, std::memory_order_relaxed);
+
+		if (!bIdlePinned) {
+			// If this stays 1, an unfocused -game process skips the world tick after STEP was consumed.
+			if (IConsoleVariable* idle = IConsoleManager::Get().FindConsoleVariable(TEXT("t.IdleWhenNotForeground"))) {
+				idle->Set(0, ECVF_SetByCode);
+				bIdlePinned = true;
+			}
+		}
 
 		// Published with magic. A free-running session leaves the bit clear and never installs this.
 		const bool bSync = (header->flags & kFlagSync) != 0;
@@ -85,9 +98,28 @@ private:
 			if (!world) {
 				return true;
 			}
+			// Before the store. A cold cube load sits in the tool's ready wait, not the reply wait.
+			WarmWindowMesh();
 			header->state.store(kStateUeReady, std::memory_order_release);
 			bReady = true;
 			UE_LOG(LogUEShmBridge, Display, TEXT("ueshm ready"));
+		}
+		if (world != nullptr && !bHud) {
+			AShmHud* hud = nullptr;
+			if (APlayerController* controller = world->GetFirstPlayerController()) {
+				controller->ClientSetHUD(AShmHud::StaticClass());
+				hud = Cast<AShmHud>(controller->GetHUD());
+			}
+			if (hud == nullptr) {
+				if (!bHudWaitLogged) {
+					UE_LOG(LogUEShmBridge, Display, TEXT("ueshm hud waiting"));
+					bHudWaitLogged = true;
+				}
+			} else {
+				hud->Attach(Region.Data());
+				bHud = true;
+				UE_LOG(LogUEShmBridge, Display, TEXT("ueshm hud"));
+			}
 		}
 		if (!world || bSync) {
 			return true;
@@ -106,7 +138,7 @@ private:
 			if (!Decode(buf, size, &command)) {
 				break;
 			}
-			// Low 32 bits. The ring id stays 64-bit; this mirror is what a later HUD can read.
+			// Low 32 bits. The ring id stays 64-bit. DrawHUD reads this mirror; it is not the fence.
 			header->last_cmd_type = command.type;
 			header->last_cmd_id = static_cast<std::uint32_t>(command.id);
 			if (!DispatchCommand(
@@ -121,6 +153,9 @@ private:
 	FTSTicker::FDelegateHandle Ticker;
 	TWeakObjectPtr<UShmTimeStep> TimeStep;
 	bool bReady = false;
+	bool bHud = false;
+	bool bHudWaitLogged = false;
+	bool bIdlePinned = false;
 };
 
 IMPLEMENT_MODULE(FUEShmBridgeModule, UEShmBridge)

@@ -2,7 +2,7 @@
 
 Visual Studio builds `uectl` and the five tests. The Unreal plugin is a second build, done by Unreal's own build script with the same Visual Studio C++ tools.
 
-The command behavior is `docs/tool.md`. The region layout is `docs/protocol.md`. The CMake flags, the test names, and the ways a run fails before the protocol is involved are `docs/build.md`. `--window` is specified and not in the binary.
+The command behavior is `docs/tool.md`. The region layout is `docs/protocol.md`. The CMake flags, the test names, and the ways a run fails before the protocol is involved are `docs/build.md`. `--window` drops `-nullrhi` and `-unattended`. The flag is `docs/tool.md`.
 
 ## 1. Install the tools
 
@@ -59,4 +59,4 @@ uectl.exe demo --engine "C:\Program Files\Epic Games\UE_5.8" --project "C:\full\
 
 A good run prints `spawned 1000`, exits 0, and the engine log contains `ueshm ready`. The engine log is in that same terminal. The run takes a bit over ten seconds once the plugin is built.
 
-`ping`, `exec "stat fps"`, `launch`, and `step --dt 0.1 --count 10` take the same `--engine` and `--project` arguments. A good `step` prints `stepped 10` and exits 0. `launch` starts the engine and waits until the process exits.
+`ping`, `exec "stat fps"`, `launch`, and `step --dt 0.1 --count 10` take the same `--engine` and `--project` arguments. A good `step` prints `stepped 10` and exits 0. `step --window` prints the same line and opens a window. `launch` starts the engine and waits until the process exits.

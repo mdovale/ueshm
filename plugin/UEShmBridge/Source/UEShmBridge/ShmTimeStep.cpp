@@ -6,7 +6,6 @@
 #include "Engine/World.h"
 #include "GameFramework/PlayerController.h"
 #include "GameFramework/WorldSettings.h"
-#include "HAL/IConsoleManager.h"
 #include "HAL/PlatformProcess.h"
 #include "HAL/PlatformTime.h"
 #include "Misc/App.h"
@@ -52,10 +51,6 @@ void UShmTimeStep::Attach(void* InBase) {
 bool UShmTimeStep::Initialize(UEngine* /*InEngine*/) {
 	if (Base == nullptr) {
 		return false;
-	}
-	// If this stays 1, an unfocused game skips the world tick after STEP was already consumed.
-	if (IConsoleVariable* idle = IConsoleManager::Get().FindConsoleVariable(TEXT("t.IdleWhenNotForeground"))) {
-		idle->Set(0, ECVF_SetByCode);
 	}
 	if (!EndFrameHandle.IsValid()) {
 		EndFrameHandle = FCoreDelegates::OnEndFrame.AddUObject(this, &UShmTimeStep::OnEndFrame);
@@ -119,6 +114,7 @@ bool UShmTimeStep::UpdateTimeStep(UEngine* /*InEngine*/) {
 					ErrPayload body;
 					body.type = command.type;
 					std::memcpy(err.payload, &body, sizeof(body));
+					NoteCommand(command.type, command.id, "err");
 					PublishReply(replies, err, header);
 					return DrainStop::Step;
 				}
@@ -192,6 +188,9 @@ void UShmTimeStep::OnEndFrame() {
 	body.frame = frame;
 	body.speed = speed;
 	std::memcpy(reply.payload, &body, sizeof(body));
+	// After the move. The transcript word is the completed step, not the pop.
+	NoteCompletedStep(dt);
+	NoteCommand(kStep, id, "frame");
 	Ring replies(bytes + header->rsp_off);
 	PublishReply(replies, reply, header);
 }

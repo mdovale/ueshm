@@ -7,18 +7,20 @@ The binary is `./build/uectl`, or `build\Release\uectl.exe` on Windows.
 ## Arguments
 
 ```
-uectl launch|ping|demo --engine <root> --project <uproject> [--map <map>] [--sync]
-uectl step --dt <seconds> --count <n> --engine <root> --project <uproject> [--map <map>]
-uectl exec <command> --engine <root> --project <uproject> [--map <map>] [--sync]
+uectl launch|ping|demo --engine <root> --project <uproject> [--map <map>] [--sync] [--window]
+uectl step --dt <seconds> --count <n> --engine <root> --project <uproject> [--map <map>] [--window]
+uectl exec <command> --engine <root> --project <uproject> [--map <map>] [--sync] [--window]
 ```
 
-`--engine` and `--project` are required. `--map` defaults to `/Engine/Maps/Entry`. `exec` joins its remaining non-option arguments with spaces and sends that string. A missing command, an unknown subcommand, a stray argument, or `step` without both `--dt` and `--count` prints usage and exits 1. `--count` has to be at least 1. `--window` is not accepted yet.
+`--engine` and `--project` are required. `--map` defaults to `/Engine/Maps/Entry`. `exec` joins its remaining non-option arguments with spaces and sends that string. A missing command, an unknown subcommand, a stray argument, or `step` without both `--dt` and `--count` prints usage and exits 1. `--count` has to be at least 1. `--window` is accepted on every subcommand.
 
-`--engine` is the directory that contains one of these files. The tool launches the first that exists:
+`--engine` is the directory that contains one of these files. A headless launch uses the first that exists:
 
 - `Engine/Binaries/Mac/UnrealEditor-Cmd`
 - `Engine/Binaries/Win64/UnrealEditor-Cmd.exe`
 - `Engine/Binaries/Linux/UnrealEditor-Cmd`
+
+On macOS, `--window` tries `Engine/Binaries/Mac/UnrealEditor.app/Contents/MacOS/UnrealEditor` first and uses `UnrealEditor-Cmd` only if that file is missing. `UnrealEditor-Cmd` cannot become the key process, so its window does not come forward. The app bundle can.
 
 The project path passed to the editor is `std::filesystem::absolute` of `--project`. A relative `.uproject` handed to the editor itself is resolved from `Engine/Binaries/<platform>/`, not from the shell. Pass an absolute path on the command line anyway. That is the path the editor records, and it is the path that shows up in failures.
 
@@ -27,10 +29,14 @@ The project path passed to the editor is `std::filesystem::absolute` of `--proje
 After the region is created and `InitRegion` has returned, the child is:
 
 ```
-UnrealEditor-Cmd <project> <map> -game -nullrhi -unattended -nosplash -nopause -stdout -ShmName=<logical name>
+UnrealEditor-Cmd <project> <map> -game -nullrhi -unattended -nosplash -nopause -stdout -ExecCmds=t.IdleWhenNotForeground 0 -ShmName=<logical name>
 ```
 
+`--window` removes `-nullrhi` and `-unattended`, and leaves `-game`. Headless `demo` and headless `step` do not pass `--window`, and they keep both flags. A macOS `UnrealEditor-Cmd` window did not come forward with `-unattended` or without it. The app bundle is the launch that can become key.
+
 `-game` is required. The plugin becomes ready only for a Game or PIE world, and commandlets exit on their own. `-nullrhi` disables the renderer. `-stdout` puts the engine log on the tool's terminal. The logical name is the one just created. The editor path and the project path are absolute.
+
+Every launch passes `-ExecCmds=t.IdleWhenNotForeground 0`. The cvar is cheat, so this is an exec and not a project ini. What a value of 1 would skip is `docs/plugin.md`.
 
 Sync does not change this line. `uectl step` sets `flags` bit 0 before `magic` is published. `ping`, `exec`, `demo`, and `launch` leave it clear unless `--sync` is passed.
 
@@ -77,6 +83,8 @@ It prints `spawned 1000`. The position check is the acceptance test for the bulk
 
 A bad frame prints `step frame`. A bad speed prints `step speed`. Spawn, dump, quit, and exit failures use the same lines as `demo`.
 
+`--window` on `step` sends the same orders with the renderer left on. Between steps the picture is still. A step moves the cubes by `speed * dt`. `launch --window` sends nothing and shows the idle world until the process exits. The HUD and the cube are `docs/plugin.md`.
+
 `--sync` on `ping`, `exec`, `demo`, and `launch` sets the same bit and does not send `STEP`. Those commands still get their replies from the idle drain. `demo --sync` still expects the spawn positions, because nothing stepped. `demo` without `--sync` does not set the bit and does not write the tool half.
 
 `QUIT` requires an `ACK`. The tool then waits up to 60 s for exit code 0.
@@ -86,7 +94,3 @@ A bad frame prints `step frame`. A bad speed prints `step speed`. Spawn, dump, q
 The session owns the region and the child. If the process returns while the child is still alive, the destructor `SIGKILL`s it (TerminateProcess on Windows) and waits. It then release-stores `state = 2`. The region destructor unmaps and, on POSIX, unlinks the object. Windows drops the mapping when this last handle closes.
 
 A failed ready wait, a failed reply wait, or a crashed child takes the same path: the error is printed, `main` returns 1, and the destructor cleans up. A POSIX crash can still leave a name behind if the process is killed from outside. The next `Create` of that same name unlinks it first. Names are random, so the stale object is reclaimed when that name is reused, not when a later run picks a new one.
-
-## Not built yet
-
-`--window` is not accepted. When it lands it will remove `-nullrhi` from the launch line and leave the rest, including `-game`. Headless `demo` and headless `step` do not pass it, and headless spawns stay mesh-less. Layout of `STEP`, the halves, and `flags` is `docs/protocol.md`.

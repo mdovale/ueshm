@@ -20,14 +20,17 @@ The ticker runs on the game thread. In free-running mode it runs after that iter
 
 Each callback:
 
-1. Acquire-loads `magic`. If it is not `UESH`, or `version` is not 2, returns and stays registered. The header is not published yet, or it is the wrong layout.
-2. Relaxed-increments `ue_heartbeat`.
-3. If sync is set and the timestep is not installed yet, creates `UShmTimeStep` and calls `UEngine::SetCustomTimeStep`. This is not an ini class, so a free-running launch does not take the clock.
-4. Looks for a `UWorld` of type Game or PIE. Editor worlds do not count.
-5. On the first such world, release-stores `state = 1` and logs `ueshm ready` once.
-6. If no game world is available, returns without popping.
-7. If sync is set, returns without popping.
-8. Otherwise pops up to 64 commands. A failed pop ends the drain. A failed decode ends the drain. `DispatchCommand` returning false ends the drain. `QUIT` is the command that returns false, and it does so only after its `ACK` is pushed.
+1. Records a render-rate sample from `FApp::GetDeltaTime()` when that delta is greater than 0. A 0-delta idle loop is not a sample. The average is the render rate in the HUD section.
+2. Acquire-loads `magic`. If it is not `UESH`, or `version` is not 2, returns and stays registered. The header is not published yet, or it is the wrong layout.
+3. Relaxed-increments `ue_heartbeat`.
+4. On the first matching header, sets `t.IdleWhenNotForeground` to 0. The default is already 0. The cvar is cheat, so a project ini entry is refused and only the engine's `ConsoleVariables.ini` may set it that way. If the value were 1, an unfocused `-game` process would skip the world tick after `STEP` had been consumed, and the end-of-frame ack would report a tick that did not happen.
+5. If sync is set and the timestep is not installed yet, creates `UShmTimeStep` and calls `UEngine::SetCustomTimeStep`. This is not an ini class, so a free-running launch does not take the clock.
+6. Looks for a `UWorld` of type Game or PIE. Editor worlds do not count.
+7. On the first such world, loads the engine cube when the process can render, then release-stores `state = 1` and logs `ueshm ready` once. The load is before the store, so a cold load sits in the tool's ready wait.
+8. If a game world exists and the HUD is not installed yet, calls `ClientSetHUD` on the first player controller. A null controller logs `ueshm hud waiting` once and is tried again on the next tick. The tick does not spin. Success logs `ueshm hud`.
+9. If no game world is available, returns without popping.
+10. If sync is set, returns without popping.
+11. Otherwise pops up to 64 commands. A failed pop ends the drain. A failed decode ends the drain. `DispatchCommand` returning false ends the drain. `QUIT` is the command that returns false, and it does so only after its `ACK` is pushed.
 
 There is no blocking primitive. The callback always returns true, so the ticker stays registered until shutdown. Shutdown also clears the custom timestep when this session installed one.
 
@@ -39,7 +42,7 @@ All of these run on the game thread, inside the drain. Replies are pushed before
 
 `CONSOLE` copies at most 1024 payload bytes, writes a NUL, and calls `GEngine->Exec` on the game world. `ACK` carries `u32` 1 or 0.
 
-`SPAWN` reads `u32 count` and `f32 spacing`. The count is capped with `(ue_bulk_bytes - 4) / 12`. Previous actors are dropped. Each new actor is an `AStaticMeshActor` spawned at the origin with `AlwaysSpawn`, set movable, then moved to `(i * spacing, 0, 0)`. `ACK` carries how many were spawned. No mesh is assigned. Under `-nullrhi` there is nothing to draw, and the position still exists.
+`SPAWN` reads `u32 count` and `f32 spacing`. The count is capped with `(ue_bulk_bytes - 4) / 12`. Previous actors are dropped. Each new actor is an `AStaticMeshActor` spawned at the origin with `AlwaysSpawn`, set movable, then moved to `(i * spacing, 0, 0)`. `ACK` carries how many were spawned. When `FApp::CanEverRender()` is true, the mesh is `/Engine/BasicShapes/Cube`, set after the component is made movable and before the location. Headless spawn does not call `LoadObject`. The cube is loaded once, before `state` becomes 1. A missing asset logs `ueshm cube missing`. Actor 0's cube is centered on the origin and fills the default eye point, so a windowed spawn then moves the pawn once to (-400, -600, 250) and aims it at (200, 0, 0). Steps do not move the pawn. The position still exists under `-nullrhi`. `--window` is the launch that can render; the flag is `docs/tool.md`.
 
 `DUMP` computes `4 + count * 12`. When that fits in the engine half, it writes `u32 count` and then `count` triples of `f32` at `ue_bulk_off`, then pushes `DONE` with that byte count. When it does not fit, the handler falls through to `ERR` and does not write the blob. The handler does not store into the tool half.
 
@@ -65,14 +68,14 @@ A loop with no `STEP` sleeps in 2 ms slices for up to one 30 Hz period and reche
 
 `QUIT` pushes `ACK`, requests exit, and returns false without that idle pause.
 
-`OnEndFrame` runs only for a `STEP` consumed this loop. It reads the `f32` at the start of the tool half, moves each spawned actor on X by `speed * dt` with `SetActorLocation`, release-stores `frame`, and pushes `STEP_ACK`. A speed of 0 leaves the actors in place. Idle loops and free-running mode do not move them. `frame` is the completed-step count. It is not stored from `UpdateTimeStep`.
+`OnEndFrame` runs only for a `STEP` consumed this loop. It reads the `f32` at the start of the tool half, moves each spawned actor on X by `speed * dt` with `SetActorLocation`, release-stores `frame`, and pushes `STEP_ACK`. A speed of 0 leaves the actors in place. Idle loops and free-running mode do not move them. `frame` is the completed-step count. It is not stored from `UpdateTimeStep`. The completed dt is what the HUD calls sim rate. A rejected `STEP` does not update it.
 
-The sync clock sets `t.IdleWhenNotForeground` to 0 when it installs. The default is already 0. The cvar is marked cheat, so a project ini entry is refused and only the engine's `ConsoleVariables.ini` may set it that way. If the value were 1, an unfocused `-game` process would skip the world tick after `STEP` had been consumed, and the end-of-frame ack would report a tick that did not happen.
+## HUD
 
-## Not built yet
+`AShmHud` is an `AHUD` in this module. No UMG module and no widget asset. `UEShmBridge.Build.cs` gains no dependency. `DrawHUD` runs on the game thread from `AHUD::PostRender`, which skips the call when the process cannot render. `-nullrhi` therefore draws nothing.
 
-The HUD is not in the module. It will be a `UCLASS` `AHUD`, drawn with `UCanvas` and `GEngine->GetSmallFont()`. No UMG asset. On the first ready tick the module will call `ClientSetHUD` on the world's first player controller. `/Engine/Maps/Entry` starts one. A null controller is retried on the next tick.
+The lines use `UCanvas` and `GEngine->GetSmallFont()`. In order: `state`, both heartbeats, `flags`, `frame`, `last_cmd_type`, `last_cmd_id`, `last_rsp_type`, `last_rsp_id`, the last completed `STEP` dt (`step_dt`), `render`, `sim`, then up to eight transcript lines. `frame` on screen is the last completed step. `DrawHUD` reads those fields. It does not pop a ring.
 
-`DrawHUD` will read `state`, both heartbeats, `flags`, `frame`, the last `STEP` dt, and the header's last command and reply mirror. It will also print the eight most recent commands from a buffer in the plugin. The rings do not keep a record after pop. Render rate is the recent average of `1 / FApp::GetDeltaTime()` over frames whose delta is greater than 0. Sim rate is `1 / dt` of the last accepted `STEP`, or 0 if none has completed. They are separate numbers. `frame` on screen is the last completed step.
+The transcript lives in the module. A popped ring record is gone. Each line is the command name, the id, and one of `ok`, `spawned`, `frame`, `err`. `PING`, a console `ACK` of 1, `DUMP`, and `QUIT` are `ok`. A console `ACK` of 0 is `err`. `SPAWN` is `spawned`. A completed `STEP` is `frame`, recorded from the end-of-frame callback after the actors move. A rejected `STEP` is `err`, recorded from the drain. The header mirror is the shared-memory state. The transcript is local context under it.
 
-`--window` is the only path that will assign `/Engine/BasicShapes/Cube` to a spawned mesh. Headless spawns stay mesh-less. `-nullrhi` does not draw a HUD.
+`render` is the average of `1 / FApp::GetDeltaTime()` over the last 32 ticker samples whose delta is greater than 0. `sim` is `1 / dt` of the last completed `STEP`, or 0 if none has completed. The labels are different numbers. A 0-delta idle loop is not stored in `render` and is not shown as `sim`.

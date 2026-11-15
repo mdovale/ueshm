@@ -30,6 +30,7 @@ struct Options {
 	float dt = 0.f;
 	std::uint32_t count = 0;
 	bool sync = false;
+	bool window = false;
 	bool has_dt = false;
 	bool has_count = false;
 };
@@ -54,9 +55,9 @@ struct Session {
 // Print the command line to stderr.
 void Usage() {
 	std::fprintf(stderr,
-		"usage: uectl launch|ping|demo --engine <root> --project <uproject> [--map <map>] [--sync]\n"
-		"       uectl step --dt <seconds> --count <n> --engine <root> --project <uproject> [--map <map>]\n"
-		"       uectl exec <command> --engine <root> --project <uproject> [--map <map>] [--sync]\n");
+		"usage: uectl launch|ping|demo --engine <root> --project <uproject> [--map <map>] [--sync] [--window]\n"
+		"       uectl step --dt <seconds> --count <n> --engine <root> --project <uproject> [--map <map>] [--window]\n"
+		"       uectl exec <command> --engine <root> --project <uproject> [--map <map>] [--sync] [--window]\n");
 }
 
 // Fill `opt` from argv. False means the caller should print usage.
@@ -91,6 +92,8 @@ bool Parse(int argc, char** argv, Options* opt) {
 			opt->map = argv[++i];
 		} else if (arg == "--sync") {
 			opt->sync = true;
+		} else if (arg == "--window") {
+			opt->window = true;
 		} else if (arg == "--dt") {
 			if (i + 1 >= argc) {
 				return false;
@@ -143,13 +146,16 @@ bool Parse(int argc, char** argv, Options* opt) {
 	return extra.empty() && (opt->command == "launch" || opt->command == "ping" || opt->command == "demo");
 }
 
-// First UnrealEditor-Cmd that exists under `root`, or an empty path.
-std::filesystem::path EditorPath(const std::filesystem::path& root) {
-	const std::filesystem::path candidates[] = {
-		root / "Engine/Binaries/Mac/UnrealEditor-Cmd",
-		root / "Engine/Binaries/Win64/UnrealEditor-Cmd.exe",
-		root / "Engine/Binaries/Linux/UnrealEditor-Cmd",
-	};
+// First editor binary that exists under `root`, or an empty path.
+// A windowed macOS launch prefers the app bundle. UnrealEditor-Cmd cannot become key.
+std::filesystem::path EditorPath(const std::filesystem::path& root, bool window) {
+	std::vector<std::filesystem::path> candidates;
+	if (window) {
+		candidates.push_back(root / "Engine/Binaries/Mac/UnrealEditor.app/Contents/MacOS/UnrealEditor");
+	}
+	candidates.push_back(root / "Engine/Binaries/Mac/UnrealEditor-Cmd");
+	candidates.push_back(root / "Engine/Binaries/Win64/UnrealEditor-Cmd.exe");
+	candidates.push_back(root / "Engine/Binaries/Linux/UnrealEditor-Cmd");
 	for (const std::filesystem::path& candidate : candidates) {
 		std::error_code ec;
 		if (std::filesystem::is_regular_file(candidate, ec) && !ec) {
@@ -342,7 +348,7 @@ int main(int argc, char** argv) {
 		return 1;
 	}
 
-	const std::filesystem::path editor = EditorPath(opt.engine);
+	const std::filesystem::path editor = EditorPath(opt.engine, opt.window);
 	if (editor.empty()) {
 		return Fail("editor not found");
 	}
@@ -368,18 +374,25 @@ int main(int argc, char** argv) {
 	Ring replies(base + header->rsp_off);
 
 	// -ShmName is the logical name. The plugin opens that object; it does not create it.
-	session.process = Process::Launch({
+	// --window is the only launch that can draw. Headless keeps -nullrhi, so spawn does not load a mesh.
+	// The exec pins a cheat cvar. A project ini entry is ignored.
+	std::vector<std::string> launch = {
 		editor.string(),
 		project.string(),
 		opt.map,
 		"-game",
-		"-nullrhi",
-		"-unattended",
-		"-nosplash",
-		"-nopause",
-		"-stdout",
-		"-ShmName=" + name,
-	});
+	};
+	if (!opt.window) {
+		launch.push_back("-nullrhi");
+		// Headless keeps this. A windowed Cmd launch with it never came forward.
+		launch.push_back("-unattended");
+	}
+	launch.push_back("-nosplash");
+	launch.push_back("-nopause");
+	launch.push_back("-stdout");
+	launch.push_back("-ExecCmds=t.IdleWhenNotForeground 0");
+	launch.push_back("-ShmName=" + name);
+	session.process = Process::Launch(launch);
 	if (!session.process) {
 		return Fail("launch failed");
 	}
