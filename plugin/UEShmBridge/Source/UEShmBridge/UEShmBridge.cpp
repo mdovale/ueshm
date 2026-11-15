@@ -1,4 +1,5 @@
 #include "Commands.h"
+#include "ShmTimeStep.h"
 
 #include "CoreMinimal.h"
 #include "Containers/Ticker.h"
@@ -7,6 +8,7 @@
 #include "Misc/CommandLine.h"
 #include "Misc/Parse.h"
 #include "Modules/ModuleManager.h"
+#include "UObject/WeakObjectPtr.h"
 
 #include <string>
 
@@ -19,24 +21,6 @@
 #endif
 
 DEFINE_LOG_CATEGORY_STATIC(LogUEShmBridge, Log, All);
-
-namespace {
-
-// First Game or PIE world, or null. Editor worlds do not count.
-UWorld* FindGameWorld() {
-	if (!GEngine) {
-		return nullptr;
-	}
-	for (const FWorldContext& context : GEngine->GetWorldContexts()) {
-		UWorld* world = context.World();
-		if (world && (world->WorldType == EWorldType::Game || world->WorldType == EWorldType::PIE)) {
-			return world;
-		}
-	}
-	return nullptr;
-}
-
-}  // namespace
 
 class FUEShmBridgeModule : public IModuleInterface
 {
@@ -57,16 +41,25 @@ public:
 		Ticker = FTSTicker::GetCoreTicker().AddTicker(FTickerDelegate::CreateRaw(this, &FUEShmBridgeModule::Tick));
 	}
 
-	// Remove the ticker.
+	// Remove the ticker. Drop the sync clock if this session installed one.
 	void ShutdownModule() override
 	{
 		if (Ticker.IsValid()) {
 			FTSTicker::RemoveTicker(Ticker);
 		}
+		// The engine may already have destroyed the clock. Get() is null then.
+		if (UShmTimeStep* step = TimeStep.Get()) {
+			step->RemoveFromRoot();
+			if (GEngine != nullptr) {
+				GEngine->SetCustomTimeStep(nullptr);
+			}
+		}
+		TimeStep.Reset();
 	}
 
 private:
-	// Bump the heartbeat, publish ue_ready once, and drain up to 64 commands. Stays registered.
+	// Bump the heartbeat and publish ue_ready once. Stays registered.
+	// Sync mode does not pop. The custom timestep is the only consumer then.
 	bool Tick(float)
 	{
 		auto* header = reinterpret_cast<Header*>(Region.Data());
@@ -74,6 +67,18 @@ private:
 			return true;
 		}
 		header->ue_heartbeat.fetch_add(1, std::memory_order_relaxed);
+
+		// Published with magic. A free-running session leaves the bit clear and never installs this.
+		const bool bSync = (header->flags & kFlagSync) != 0;
+		if (bSync && !TimeStep.IsValid() && GEngine != nullptr) {
+			UShmTimeStep* created = NewObject<UShmTimeStep>(GEngine);
+			created->AddToRoot();
+			created->Attach(Region.Data());
+			TimeStep = created;
+			if (!GEngine->SetCustomTimeStep(created)) {
+				UE_LOG(LogUEShmBridge, Error, TEXT("timestep init failed"));
+			}
+		}
 
 		UWorld* world = FindGameWorld();
 		if (!bReady) {
@@ -84,7 +89,7 @@ private:
 			bReady = true;
 			UE_LOG(LogUEShmBridge, Display, TEXT("ueshm ready"));
 		}
-		if (!world) {
+		if (!world || bSync) {
 			return true;
 		}
 
@@ -114,6 +119,7 @@ private:
 
 	ShmRegion Region;
 	FTSTicker::FDelegateHandle Ticker;
+	TWeakObjectPtr<UShmTimeStep> TimeStep;
 	bool bReady = false;
 };
 

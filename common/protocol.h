@@ -38,7 +38,8 @@ constexpr std::uint16_t kSpawn = 3;
 constexpr std::uint16_t kDump = 4;
 // Request type. Payload is empty. After its ACK the handler stops the drain.
 constexpr std::uint16_t kQuit = 5;
-// Request type, between the handled requests and the replies. Not dispatched yet, so it is ERR.
+// Request type. Payload is one f32 dt in seconds. Dispatched only when sync is set.
+// A free-running drain falls through to ERR. dt <= 0 or dt > 1 is ERR and does not tick.
 constexpr std::uint16_t kStep = 6;
 // Reply type, above the request range. Payload is the nonce from the PING it answers.
 constexpr std::uint16_t kPong = 101;
@@ -48,7 +49,8 @@ constexpr std::uint16_t kAck = 102;
 constexpr std::uint16_t kDone = 103;
 // Reply type, above the request range. Payload is the request type that failed, under the same id.
 constexpr std::uint16_t kErr = 104;
-// Reply type, above kErr. Reserved for STEP. Not produced until a step is actually ticked.
+// Reply type, above kErr. Payload is u32 frame, then f32 speed.
+// Pushed from the end-of-frame callback after that step's actors have moved.
 constexpr std::uint16_t kStepAck = 105;
 
 // First byte of the command ring. Equal to the header size, so the two do not overlap.
@@ -143,6 +145,13 @@ struct SpawnPayload {
 	std::uint32_t count;
 	float spacing;
 };
+struct StepPayload {
+	float dt;
+};
+struct StepAckPayload {
+	std::uint32_t frame;
+	float speed;
+};
 
 static_assert(sizeof(PingPayload) == 8, "ping");
 static_assert(sizeof(AckPayload) == 4, "ack");
@@ -150,6 +159,14 @@ static_assert(sizeof(DonePayload) == 4, "done");
 static_assert(sizeof(ErrPayload) == 4, "err");
 static_assert(sizeof(SpawnPayload) == 8, "spawn");
 static_assert(offsetof(SpawnPayload, spacing) == 4, "spacing");
+static_assert(sizeof(StepPayload) == 4, "step");
+static_assert(sizeof(StepAckPayload) == 8, "step ack");
+static_assert(offsetof(StepAckPayload, speed) == 4, "step speed");
+
+// True when the world may tick this dt. Non-positive or above one second is ERR.
+inline bool StepDtAccepted(float dt) {
+	return dt > 0.f && dt <= 1.f;
+}
 
 struct Message {
 	std::uint16_t type = 0;
@@ -159,7 +176,8 @@ struct Message {
 };
 
 // Zero the mapping, fill the header, both rings, and the bulk halves, then release-store magic.
-inline bool InitRegion(void* base, std::uint32_t total_size) {
+// `flags` is stored before that release. Bit 0 set makes the plugin take the sync clock.
+inline bool InitRegion(void* base, std::uint32_t total_size, std::uint32_t flags = 0) {
 	if (base == nullptr || total_size < kBulkOff) {
 		return false;
 	}
@@ -180,7 +198,7 @@ inline bool InitRegion(void* base, std::uint32_t total_size) {
 	header->rsp_bytes = Ring::kCapacity;
 	header->bulk_off = kBulkOff;
 	header->bulk_bytes = total_size - kBulkOff;
-	header->flags = 0;
+	header->flags = flags;
 	// Low half, multiple of 8. The engine half is whatever remains, so the spans do not share a byte.
 	header->tool_bulk_off = header->bulk_off;
 	header->tool_bulk_bytes = (header->bulk_bytes / 2u) & ~7u;

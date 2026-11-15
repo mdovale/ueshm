@@ -12,10 +12,23 @@ TArray<AStaticMeshActor*> Spawned;
 
 }  // namespace
 
-namespace {
+// First Game or PIE world, or null. Editor worlds do not count.
+UWorld* FindGameWorld() {
+	if (!GEngine) {
+		return nullptr;
+	}
+	for (const FWorldContext& context : GEngine->GetWorldContexts()) {
+		UWorld* world = context.World();
+		if (world && (world->WorldType == EWorldType::Game || world->WorldType == EWorldType::PIE)) {
+			return world;
+		}
+	}
+	return nullptr;
+}
 
-// Record the reply mirror, then encode and push. False if the ring refuses the record.
-bool PushReply(Ring& replies, const Message& reply, Header* header) {
+// Encode and push. False if the ring refuses the record.
+// Stores last_rsp_* before the push when `header` is set.
+bool PublishReply(Ring& replies, const Message& reply, Header* header) {
 	if (header != nullptr) {
 		header->last_rsp_type = reply.type;
 		header->last_rsp_id = static_cast<std::uint32_t>(reply.id);
@@ -28,6 +41,23 @@ bool PushReply(Ring& replies, const Message& reply, Header* header) {
 	}
 	return true;
 }
+
+// Move each spawned actor by `speed * dt` on X. A zero speed leaves them in place.
+void IntegrateSpawned(float speed, float dt) {
+	if (speed == 0.f) {
+		return;
+	}
+	const double delta = static_cast<double>(speed) * static_cast<double>(dt);
+	for (AStaticMeshActor* actor : Spawned) {
+		if (actor == nullptr) {
+			continue;
+		}
+		const FVector loc = actor->GetActorLocation();
+		actor->SetActorLocation(FVector(loc.X + delta, loc.Y, loc.Z));
+	}
+}
+
+namespace {
 
 // A reply of `type` that copies the command id. The payload length stays 0.
 Message Reply(const Message& command, std::uint16_t type) {
@@ -52,7 +82,7 @@ bool DispatchCommand(
 		Message out = Reply(command, kPong);
 		out.size = sizeof(PingPayload);
 		std::memcpy(out.payload, command.payload, sizeof(PingPayload));
-		PushReply(replies, out, header);
+		PublishReply(replies, out, header);
 		return true;
 	}
 
@@ -69,7 +99,7 @@ bool DispatchCommand(
 		AckPayload ack;
 		ack.value = ran ? 1u : 0u;
 		std::memcpy(out.payload, &ack, sizeof(ack));
-		PushReply(replies, out, header);
+		PublishReply(replies, out, header);
 		return true;
 	}
 
@@ -100,7 +130,7 @@ bool DispatchCommand(
 		AckPayload ack;
 		ack.value = static_cast<std::uint32_t>(Spawned.Num());
 		std::memcpy(out.payload, &ack, sizeof(ack));
-		PushReply(replies, out, header);
+		PublishReply(replies, out, header);
 		return true;
 	}
 
@@ -125,14 +155,14 @@ bool DispatchCommand(
 			DonePayload done;
 			done.bytes = nbytes;
 			std::memcpy(out.payload, &done, sizeof(done));
-			PushReply(replies, out, header);
+			PublishReply(replies, out, header);
 			return true;
 		}
 	}
 
 	if (command.type == kQuit) {
 		Message out = Reply(command, kAck);
-		PushReply(replies, out, header);
+		PublishReply(replies, out, header);
 		FPlatformMisc::RequestExit(false);
 		return false;
 	}
@@ -142,6 +172,6 @@ bool DispatchCommand(
 	ErrPayload err;
 	err.type = command.type;
 	std::memcpy(out.payload, &err, sizeof(err));
-	PushReply(replies, out, header);
+	PublishReply(replies, out, header);
 	return true;
 }

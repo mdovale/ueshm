@@ -2,7 +2,7 @@
 
 This file owns the shared-memory layout: header, rings, records, orders, bulk, and fences. Other docs point here instead of restating it.
 
-The binary speaks version 2. Bulk is split into a tool half and an engine half. `STEP` and `STEP_ACK` are reserved and not dispatched yet. Sync, `uectl step`, and `--window` are not in the tree.
+The binary speaks version 2. Bulk is split into a tool half and an engine half. `STEP` is dispatched only when sync is set. `--window` is not in the tree.
 
 Both sides compile the same `common/protocol.h` and `common/ring.h`. Shared structs use fixed-width integers, explicit alignment, and little-endian stores. They contain no pointers, no STL, and no exceptions. `static_assert` pins `sizeof` and `offsetof` on both builds.
 
@@ -39,8 +39,8 @@ macOS rejects a POSIX shared-memory name longer than 31 bytes, including the lea
 | 36 | `rsp_bytes` | `u32` | tool | 65536 |
 | 40 | `bulk_off` | `u32` | tool | 131712. First byte of the whole bulk span |
 | 44 | `bulk_bytes` | `u32` | tool | `total_size - bulk_off`. 16645504 in the default 16 MiB region |
-| 48 | `flags` | `u32` | tool, before `magic` | bit 0 is sync. Clear in every command that runs today |
-| 52 | `frame` | atomic `u32` | plugin | completed steps. Stays 0 until a step is ticked |
+| 48 | `flags` | `u32` | tool, before `magic` | bit 0 is sync. `uectl step` sets it. The other commands set it only with `--sync` |
+| 52 | `frame` | atomic `u32` | plugin | completed steps. Stays 0 until an accepted `STEP` finishes. Release-stored on that end-of-frame callback |
 | 56 | `last_cmd_type` | `u32` | plugin, when a command is popped | wire type |
 | 60 | `last_cmd_id` | `u32` | plugin | low 32 bits of the ring id |
 | 64 | `last_rsp_type` | `u32` | plugin, before the reply is pushed | wire type |
@@ -101,6 +101,7 @@ Local `Message` objects are not stored in the region. Only the encoded bytes are
 | `SPAWN` | 3 | `u32 count`, `f32 spacing` | `ACK` plus `u32 spawned` |
 | `DUMP` | 4 | empty | `DONE` (103) plus `u32 bytes` |
 | `QUIT` | 5 | empty | `ACK` with no payload |
+| `STEP` | 6 | `f32 dt` seconds | `STEP_ACK` (105), or `ERR` |
 
 Anything else, including a known type with the wrong payload size, is `ERR` (104). The payload is a `u32` holding the request's type. The id is the request's id.
 
@@ -110,15 +111,21 @@ Anything else, including a known type with the wrong payload size, is `ERR` (104
 
 `DUMP` writes `u32 count`, then `count × 3 × f32` positions, in spawn order, at `ue_bulk_off`. It writes the blob first, then pushes `DONE`. `DONE.bytes` equals `4 + count * 12`. A blob that does not fit in `ue_bulk_bytes` gets `ERR` and does not write. The tool checks `|x - i * spacing| <= 0.01` and `y == z == 0` only after the matching `DONE`. `demo` does not write the tool half.
 
-`QUIT` pushes `ACK`, then calls `FPlatformMisc::RequestExit(false)`. The handler returns after that, and the ticker stops draining for the rest of that tick.
+`QUIT` pushes `ACK`, then calls `FPlatformMisc::RequestExit(false)`. The handler returns after that, and the drain stops for the rest of that batch.
+
+`STEP` is dispatched only when sync is set. A free-running drain pushes `ERR` and does not tick. Request type 6 stays above the other request values and below the reply range. Reply type 105 stays above `ERR`. The payload is one `f32` `dt` in seconds. `dt <= 0` or `dt > 1` is `ERR`, and the world does not tick for that record. An accepted `STEP` is the last record consumed in that batch. Records after it stay on the ring until the next loop.
+
+`STEP_ACK` payload is `u32 frame`, then `f32 speed`. `frame` is the completed-step count just release-stored in the header. `speed` is the `f32` read from the first four bytes of the tool half. The ack is pushed from the end-of-frame callback, after the world tick and after the actors have moved, not from the drain that popped `STEP`. Every other reply is pushed from its handler, immediately. Do not publish `frame` when `STEP` is merely popped. That would make the counter visible before the tick has moved the actors.
+
+An accepted `STEP` sets `FApp`'s delta to `dt` and advances current time by that same `dt`. The sync clock returns before the world tick, so the engine does not replace that delta.
 
 ## Bulk
 
 `bulk_off` and `bulk_bytes` name the whole span. The halves are a split of that span, not a third region. The tool is the only writer of `[tool_bulk_off, tool_bulk_off + tool_bulk_bytes)`. The engine is the only writer of the engine half. Either side may read either half. No byte has two writers. There is no lock, seqlock, or generation counter.
 
-The tool reads the engine half only after the matching reply. The plugin finishes the `memcpy`, stores `last_rsp_*`, then release-stores the reply ring's `head`. The tool acquire-loads that `head` before it reads the engine half. The engine reads the tool half only while handling a command that says those bytes are already written. Nothing in the tree does that read yet. `STEP` is the command that will.
+The tool reads the engine half only after the matching reply. The plugin finishes the `memcpy`, stores `last_rsp_*`, then release-stores the reply ring's `head`. The tool acquire-loads that `head` before it reads the engine half. The engine reads the tool half while applying an accepted `STEP`, on the end-of-frame callback. The tool writes those bytes before it pushes `STEP`. The command ring's release/acquire is that fence.
 
-`last_cmd_*` and `last_rsp_*` are a mirror. They are not a fence. The reply ring is the fence for engine-half bytes.
+`last_cmd_*` and `last_rsp_*` are a mirror. They are not a fence. The reply ring is the fence for engine-half bytes. `frame`'s release store is the fence for the completed-step count. `DUMP` is still what publishes positions into the engine half.
 
 ## Fences
 
@@ -129,20 +136,5 @@ The tool reads the engine half only after the matching reply. The plugin finishe
 | `state = 2` | release | the tool is tearing the region down |
 | ring `head` | release, after the record bytes are copied | that record |
 | ring `tail` | release, after the consumer has copied | the slot can be reused |
+| `frame` | release, after that step's actors have moved and before `STEP_ACK` is pushed | the completed-step count |
 | heartbeats | relaxed | nothing |
-
-## Reserved order
-
-Not dispatched. A `STEP` record falls through to `ERR` with type 6. The numbers are fixed so a later build cannot reuse them. The behavior below is what step 3 implements. It is not what this binary does.
-
-| Type | Value | Payload | Reply |
-|---|---|---|---|
-| `STEP` | 6 | `f32 dt` seconds | `STEP_ACK` (105) |
-
-`STEP_ACK` payload is `u32 frame`, then `f32 speed`. `frame` is the value just stored in the header. `speed` is the `f32` the plugin read from the first four bytes of the tool half.
-
-`dt <= 0` or `dt > 1` is `ERR`. The world does not tick for that record.
-
-`STEP_ACK` is pushed from the end-of-frame callback, after the world tick, not from the drain that popped `STEP`. Every other reply is still pushed from its handler, immediately. `frame` is release-stored in that same end-of-frame callback, so a reader that sees `frame == N` is also allowed to treat step N's engine-half bytes as published. Do not publish `frame` when `STEP` is merely popped. That would make the counter visible before the tick has run.
-
-Request type 6 stays above the version-1 request range and below the reply range. Reply type 105 stays in the reply range.

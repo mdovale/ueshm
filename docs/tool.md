@@ -7,11 +7,12 @@ The binary is `./build/uectl`, or `build\Release\uectl.exe` on Windows.
 ## Arguments
 
 ```
-uectl launch|ping|demo --engine <root> --project <uproject> [--map <map>]
-uectl exec <command> --engine <root> --project <uproject> [--map <map>]
+uectl launch|ping|demo --engine <root> --project <uproject> [--map <map>] [--sync]
+uectl step --dt <seconds> --count <n> --engine <root> --project <uproject> [--map <map>]
+uectl exec <command> --engine <root> --project <uproject> [--map <map>] [--sync]
 ```
 
-`--engine` and `--project` are required. `--map` defaults to `/Engine/Maps/Entry`. `exec` joins its remaining non-option arguments with spaces and sends that string. A missing command, an unknown subcommand, or a stray argument on `launch`, `ping`, or `demo` prints usage and exits 1.
+`--engine` and `--project` are required. `--map` defaults to `/Engine/Maps/Entry`. `exec` joins its remaining non-option arguments with spaces and sends that string. A missing command, an unknown subcommand, a stray argument, or `step` without both `--dt` and `--count` prints usage and exits 1. `--count` has to be at least 1. `--window` is not accepted yet.
 
 `--engine` is the directory that contains one of these files. The tool launches the first that exists:
 
@@ -30,6 +31,8 @@ UnrealEditor-Cmd <project> <map> -game -nullrhi -unattended -nosplash -nopause -
 ```
 
 `-game` is required. The plugin becomes ready only for a Game or PIE world, and commandlets exit on their own. `-nullrhi` disables the renderer. `-stdout` puts the engine log on the tool's terminal. The logical name is the one just created. The editor path and the project path are absolute.
+
+Sync does not change this line. `uectl step` sets `flags` bit 0 before `magic` is published. `ping`, `exec`, `demo`, and `launch` leave it clear unless `--sync` is passed.
 
 ## Polling
 
@@ -64,6 +67,18 @@ Ids start at 1 and increase by 1 for each request, including `QUIT`.
 
 It prints `spawned 1000`. The position check is the acceptance test for the bulk fence: the tool reads the engine's bytes only after `DONE`.
 
+`step` sets sync and is the command that exercises it. Acceptance values are `--dt 0.1 --count 10`. After `ue_ready` it:
+
+1. `SPAWN` with count 1000 and spacing 100. `spawned` must be 1000.
+2. Writes `100.f` at the first four bytes of the tool half.
+3. Sends `--count` steps of `--dt`. Each reply must be `STEP_ACK` whose `frame` is the step index starting at 1, whose `speed` is `100.f`, and whose `frame` matches the header. `dt <= 0` or `dt > 1` comes back as `ERR` and the tool prints `step failed`.
+4. `DUMP`. The byte count and the actor count match `demo`. Actor `i` must satisfy `|x - (i * 100 + count * speed * dt)| <= 0.01` and `y == z == 0`.
+5. Prints `stepped <count>`, then `QUIT`.
+
+A bad frame prints `step frame`. A bad speed prints `step speed`. Spawn, dump, quit, and exit failures use the same lines as `demo`.
+
+`--sync` on `ping`, `exec`, `demo`, and `launch` sets the same bit and does not send `STEP`. Those commands still get their replies from the idle drain. `demo --sync` still expects the spawn positions, because nothing stepped. `demo` without `--sync` does not set the bit and does not write the tool half.
+
 `QUIT` requires an `ACK`. The tool then waits up to 60 s for exit code 0.
 
 ## Cleanup
@@ -72,20 +87,6 @@ The session owns the region and the child. If the process returns while the chil
 
 A failed ready wait, a failed reply wait, or a crashed child takes the same path: the error is printed, `main` returns 1, and the destructor cleans up. A POSIX crash can still leave a name behind if the process is killed from outside. The next `Create` of that same name unlinks it first. Names are random, so the stale object is reclaimed when that name is reused, not when a later run picks a new one.
 
-## Version 2 commands
+## Not built yet
 
-Not in the binary. Specified here so the flags have one meaning when they land. Layout of `STEP`, the halves, and `flags` is `docs/protocol.md`.
-
-`step` sets sync (`flags` bit 0) and is the command that exercises it:
-
-```
-uectl step --dt <seconds> --count <n> --engine <root> --project <uproject> [--window]
-```
-
-Acceptance values are `--dt 0.1 --count 10`. After `ue_ready` it spawns 1000 actors at spacing 100, writes `100.f` at the first four bytes of the tool half, sends `count` steps of `dt`, checks each `STEP_ACK` (`frame` and `speed`), `DUMP`s, and checks positions against `i * 100 + count * speed * dt` within 0.01. It prints `stepped <count>`, sends `QUIT`, and uses the same 60 s exit wait as `demo`. `dt` outside `(0, 1]` fails in the plugin with `ERR` and the tool fails the step.
-
-`--sync` is an extra flag on the existing subcommands. Without it, `ping`, `exec`, `demo`, and `launch` leave sync clear and stay on the free-running clock. With it, those commands still get `PING`, `CONSOLE`, and `QUIT` replies from the idle drain. They do not have to send `STEP` first.
-
-`--window` is an extra flag on every subcommand. It removes `-nullrhi` from the launch line and leaves the rest, including `-game`. It also forces `t.IdleWhenNotForeground 0`, whose default is already 0. Headless `demo` does not pass `--window` and does not set a mesh on the spawned actors.
-
-`demo` does not set sync and does not write the tool half. Its spawn count, spacing, and position check stay as they are.
+`--window` is not accepted. When it lands it will remove `-nullrhi` from the launch line and leave the rest, including `-game`. Headless `demo` and headless `step` do not pass it, and headless spawns stay mesh-less. Layout of `STEP`, the halves, and `flags` is `docs/protocol.md`.

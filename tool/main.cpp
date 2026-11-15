@@ -6,6 +6,7 @@
 #include <cmath>
 #include <cstdint>
 #include <cstdio>
+#include <cstdlib>
 #include <cstring>
 #include <filesystem>
 #include <random>
@@ -26,6 +27,11 @@ struct Options {
 	std::filesystem::path engine;
 	std::filesystem::path project;
 	std::string map = "/Engine/Maps/Entry";
+	float dt = 0.f;
+	std::uint32_t count = 0;
+	bool sync = false;
+	bool has_dt = false;
+	bool has_count = false;
 };
 
 struct Session {
@@ -48,8 +54,9 @@ struct Session {
 // Print the command line to stderr.
 void Usage() {
 	std::fprintf(stderr,
-		"usage: uectl launch|ping|demo|exec --engine <root> --project <uproject> [--map <map>]\n"
-		"       uectl exec <command> --engine <root> --project <uproject> [--map <map>]\n");
+		"usage: uectl launch|ping|demo --engine <root> --project <uproject> [--map <map>] [--sync]\n"
+		"       uectl step --dt <seconds> --count <n> --engine <root> --project <uproject> [--map <map>]\n"
+		"       uectl exec <command> --engine <root> --project <uproject> [--map <map>] [--sync]\n");
 }
 
 // Fill `opt` from argv. False means the caller should print usage.
@@ -82,6 +89,32 @@ bool Parse(int argc, char** argv, Options* opt) {
 				return false;
 			}
 			opt->map = argv[++i];
+		} else if (arg == "--sync") {
+			opt->sync = true;
+		} else if (arg == "--dt") {
+			if (i + 1 >= argc) {
+				return false;
+			}
+			++i;
+			char* end = nullptr;
+			const double parsed = std::strtod(argv[i], &end);
+			if (end == argv[i] || *end != '\0') {
+				return false;
+			}
+			opt->dt = static_cast<float>(parsed);
+			opt->has_dt = true;
+		} else if (arg == "--count") {
+			if (i + 1 >= argc) {
+				return false;
+			}
+			++i;
+			char* end = nullptr;
+			const unsigned long parsed = std::strtoul(argv[i], &end, 10);
+			if (end == argv[i] || *end != '\0' || parsed == 0 || parsed > 0xfffffffful) {
+				return false;
+			}
+			opt->count = static_cast<std::uint32_t>(parsed);
+			opt->has_count = true;
 		} else {
 			extra.push_back(arg);
 		}
@@ -90,6 +123,9 @@ bool Parse(int argc, char** argv, Options* opt) {
 		return false;
 	}
 	if (opt->command == "exec") {
+		if (opt->has_dt || opt->has_count) {
+			return false;
+		}
 		for (const std::string& part : extra) {
 			if (!opt->exec.empty()) {
 				opt->exec += ' ';
@@ -97,6 +133,12 @@ bool Parse(int argc, char** argv, Options* opt) {
 			opt->exec += part;
 		}
 		return !opt->exec.empty();
+	}
+	if (opt->command == "step") {
+		return extra.empty() && opt->has_dt && opt->has_count;
+	}
+	if (opt->has_dt || opt->has_count) {
+		return false;
 	}
 	return extra.empty() && (opt->command == "launch" || opt->command == "ping" || opt->command == "demo");
 }
@@ -189,6 +231,106 @@ int Fail(const char* msg) {
 	return 1;
 }
 
+// After ue_ready: spawn, write the tool-half speed, step, then dump.
+// Prints the stepped line. The caller sends QUIT. Nonzero on a failed check.
+int RunStep(
+	Header* header,
+	unsigned char* base,
+	Process* process,
+	Ring& commands,
+	Ring& replies,
+	std::uint64_t* next_id,
+	float dt,
+	std::uint32_t count) {
+	// Same actors demo spawns. step fails a short count the same way.
+	constexpr std::uint32_t kCount = 1000;
+	constexpr float kSpacing = 100.f;
+	// Centimeters per second at the start of the tool half. The ack must echo this value.
+	constexpr float kSpeed = 100.f;
+
+	Message spawn;
+	spawn.type = kSpawn;
+	spawn.id = (*next_id)++;
+	spawn.size = sizeof(SpawnPayload);
+	SpawnPayload request;
+	request.count = kCount;
+	request.spacing = kSpacing;
+	std::memcpy(spawn.payload, &request, sizeof(request));
+	Message reply;
+	if (!Send(header, process, commands, spawn) ||
+		!Recv(header, process, replies, spawn.id, &reply) || reply.type != kAck ||
+		reply.size != sizeof(AckPayload)) {
+		return Fail("spawn failed");
+	}
+	AckPayload spawned;
+	std::memcpy(&spawned, reply.payload, sizeof(spawned));
+	if (spawned.value != kCount) {
+		std::fprintf(stderr, "spawned %u\n", spawned.value);
+		return 1;
+	}
+
+	// Before any STEP. The plugin reads it on the end-of-frame callback for that step.
+	std::memcpy(base + header->tool_bulk_off, &kSpeed, sizeof(kSpeed));
+
+	for (std::uint32_t n = 1; n <= count; ++n) {
+		Message step;
+		step.type = kStep;
+		step.id = (*next_id)++;
+		step.size = sizeof(StepPayload);
+		StepPayload body;
+		body.dt = dt;
+		std::memcpy(step.payload, &body, sizeof(body));
+		if (!Send(header, process, commands, step) ||
+			!Recv(header, process, replies, step.id, &reply) || reply.type != kStepAck ||
+			reply.size != sizeof(StepAckPayload)) {
+			return Fail("step failed");
+		}
+		StepAckPayload ack;
+		std::memcpy(&ack, reply.payload, sizeof(ack));
+		if (ack.frame != n || header->frame.load(std::memory_order_acquire) != ack.frame) {
+			return Fail("step frame");
+		}
+		if (ack.speed != kSpeed) {
+			return Fail("step speed");
+		}
+	}
+
+	Message dump;
+	dump.type = kDump;
+	dump.id = (*next_id)++;
+	if (!Send(header, process, commands, dump) ||
+		!Recv(header, process, replies, dump.id, &reply) || reply.type != kDone ||
+		reply.size != sizeof(DonePayload)) {
+		return Fail("dump failed");
+	}
+	DonePayload done;
+	std::memcpy(&done, reply.payload, sizeof(done));
+	const std::uint32_t expect_bytes = 4u + kCount * 12u;
+	if (done.bytes != expect_bytes || done.bytes > header->ue_bulk_bytes) {
+		return Fail("dump size");
+	}
+	const unsigned char* cursor = base + header->ue_bulk_off;
+	std::uint32_t dumped = 0;
+	std::memcpy(&dumped, cursor, sizeof(dumped));
+	cursor += sizeof(dumped);
+	if (dumped != kCount) {
+		return Fail("dump count");
+	}
+	const float moved = static_cast<float>(count) * kSpeed * dt;
+	for (std::uint32_t i = 0; i < dumped; ++i) {
+		float xyz[3];
+		std::memcpy(xyz, cursor, sizeof(xyz));
+		cursor += sizeof(xyz);
+		const float want = static_cast<float>(i) * kSpacing + moved;
+		if (std::fabs(xyz[0] - want) > 0.01f || xyz[1] != 0.f || xyz[2] != 0.f) {
+			std::fprintf(stderr, "actor %u at %g %g %g\n", i, xyz[0], xyz[1], xyz[2]);
+			return 1;
+		}
+	}
+	std::printf("stepped %u\n", count);
+	return 0;
+}
+
 }  // namespace
 
 // Run one subcommand. Nonzero on usage errors, timeout, crash, or a failed check.
@@ -212,10 +354,12 @@ int main(int argc, char** argv) {
 	}
 
 	// Publish the header before the child exists. The plugin waits on magic.
+	// Bit 0 is stored before that release. step sets it. The other commands do too only with --sync.
 	const std::string name = MakeName();
 	Session session;
 	session.region = ShmRegion::Create(name, kDefaultBytes);
-	if (!session.region || !InitRegion(session.region.Data(), session.region.Size())) {
+	const std::uint32_t flags = (opt.command == "step" || opt.sync) ? kFlagSync : 0;
+	if (!session.region || !InitRegion(session.region.Data(), session.region.Size(), flags)) {
 		return Fail("create failed");
 	}
 	auto* header = reinterpret_cast<Header*>(session.region.Data());
@@ -396,6 +540,12 @@ int main(int argc, char** argv) {
 			return Fail("ping nonce");
 		}
 		std::printf("pong %llx\n", static_cast<unsigned long long>(got.nonce));
+	} else if (opt.command == "step") {
+		const int step_rc = RunStep(
+			header, base, &session.process, commands, replies, &next_id, opt.dt, opt.count);
+		if (step_rc != 0) {
+			return step_rc;
+		}
 	} else {
 		// exec. The joined arguments are the raw CONSOLE payload.
 		if (opt.exec.size() > kMaxPayload) {

@@ -124,6 +124,46 @@ int TestEmpty() {
 	if (PopMessage(ring, &msg) || ring.Head() != ring.Tail()) {
 		return Fail("not empty after pop");
 	}
+
+	// dt in (0, 1] is the only value the sync clock will tick.
+	if (!StepDtAccepted(0.1f) || !StepDtAccepted(1.f) || StepDtAccepted(0.f) || StepDtAccepted(-1.f) ||
+		StepDtAccepted(1.01f)) {
+		return Fail("step dt");
+	}
+	StepPayload step;
+	step.dt = 0.1f;
+	if (!PushPayload(ring, kStep, 7, &step, sizeof(step))) {
+		return Fail("push step");
+	}
+	if (!PopMessage(ring, &msg) || msg.type != kStep || msg.id != 7 || msg.size != sizeof(step)) {
+		return Fail("pop step");
+	}
+	StepPayload got_dt;
+	std::memcpy(&got_dt, msg.payload, sizeof(got_dt));
+	if (got_dt.dt != step.dt) {
+		return Fail("step payload");
+	}
+	Message encoded;
+	encoded.type = kStepAck;
+	encoded.id = 7;
+	encoded.size = sizeof(StepAckPayload);
+	StepAckPayload ack;
+	ack.frame = 3;
+	ack.speed = 100.f;
+	std::memcpy(encoded.payload, &ack, sizeof(ack));
+	unsigned char wire[32];
+	// 16-byte prefix plus 8 bytes of payload is already a multiple of 8.
+	if (Encode(encoded, wire, sizeof(wire)) != 24) {
+		return Fail("step ack size");
+	}
+
+	if (!InitRegion(region.bytes, kDefaultBytes, kFlagSync)) {
+		return Fail("sync init");
+	}
+	Header* synced = region.header();
+	if ((synced->flags & kFlagSync) == 0 || synced->magic.load(std::memory_order_acquire) != kMagic) {
+		return Fail("sync flag");
+	}
 	return 0;
 }
 
