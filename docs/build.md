@@ -39,7 +39,7 @@ On Linux, `shm` links `rt` when that library is present. Older glibc needs it fo
 | ctest name | Command | What it checks |
 |---|---|---|
 | `shm_two_process` | `shm_test` | Parent creates a 65536-byte region, writes a pattern, execs the same binary as `child <name>`, checks the child's write, then creates the same name again after both sides have closed it |
-| `ring_empty` | `ring_test empty` | Pop on an empty ring fails, a `STEP` record round-trips, and a sync flag survives init |
+| `ring_empty` | `ring_test empty` | Pop on an empty ring fails, the bulk halves do not overlap and the engine half holds a 1000-position dump, a `STEP` record round-trips, and a sync flag survives init |
 | `ring_full` | `ring_test full` | A record that would pass the capacity is refused, and the ring still drains |
 | `ring_wrap` | `ring_test wrap` | A record that does not fit at the end is written at offset 0 |
 | `ring_stress` | `ring_test stress` | 10000 messages, producer and consumer on two threads |

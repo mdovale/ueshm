@@ -2,6 +2,7 @@
 #include "protocol.h"
 #include "shm.h"
 
+#include <cfloat>
 #include <chrono>
 #include <cmath>
 #include <cstdint>
@@ -322,13 +323,15 @@ int RunStep(
 	if (dumped != kCount) {
 		return Fail("dump count");
 	}
-	const float moved = static_cast<float>(count) * kSpeed * dt;
+	const double moved = static_cast<double>(count) * kSpeed * static_cast<double>(dt);
 	for (std::uint32_t i = 0; i < dumped; ++i) {
 		float xyz[3];
 		std::memcpy(xyz, cursor, sizeof(xyz));
 		cursor += sizeof(xyz);
-		const float want = static_cast<float>(i) * kSpacing + moved;
-		if (std::fabs(xyz[0] - want) > 0.01f || xyz[1] != 0.f || xyz[2] != 0.f) {
+		const double want = static_cast<double>(i) * kSpacing + moved;
+		// DUMP rounds each position to f32. Above 2^18 cm half an f32 step is already past 0.01.
+		const double slack = 0.01 + std::fabs(want) * FLT_EPSILON;
+		if (std::fabs(xyz[0] - want) > slack || xyz[1] != 0.f || xyz[2] != 0.f) {
 			std::fprintf(stderr, "actor %u at %g %g %g\n", i, xyz[0], xyz[1], xyz[2]);
 			return 1;
 		}

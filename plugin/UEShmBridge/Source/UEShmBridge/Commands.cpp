@@ -8,6 +8,7 @@
 #include "GameFramework/Pawn.h"
 #include "GameFramework/PlayerController.h"
 #include "HAL/PlatformMisc.h"
+#include "HAL/PlatformTime.h"
 #include "Misc/App.h"
 
 namespace {
@@ -27,11 +28,12 @@ int TranscriptCount = 0;
 float LastCompletedDt = 0.f;
 bool bStepCompleted = false;
 
-// Positive-delta frames kept for the render-rate average. A 0-delta idle loop is not stored.
+// Loop intervals kept for the render-rate average. About one second at the 30 Hz idle period, so the line follows a change.
 constexpr int kRenderSamples = 32;
 double RenderSamples[kRenderSamples]{};
 int RenderCount = 0;
 double RenderSum = 0.0;
+double LastLoopSeconds = 0.0;
 
 UStaticMesh* CachedCube = nullptr;
 bool bCubeTried = false;
@@ -135,9 +137,12 @@ void NoteCompletedStep(float dt) {
 	bStepCompleted = true;
 }
 
-// Samples 1/FApp::GetDeltaTime when that delta is positive. A 0-delta idle loop is not stored.
+// Samples the wall-clock time since the previous call. The first call only sets the start.
 void NoteRenderDelta() {
-	const double dt = FApp::GetDeltaTime();
+	// Not FApp's delta. The sync clock writes 0 on idle loops and the step dt otherwise, and neither is a present.
+	const double now = FPlatformTime::Seconds();
+	const double dt = LastLoopSeconds > 0.0 ? now - LastLoopSeconds : 0.0;
+	LastLoopSeconds = now;
 	if (!(dt > 0.0)) {
 		return;
 	}
@@ -246,6 +251,12 @@ bool DispatchCommand(
 		std::memcpy(&request, command.payload, sizeof(request));
 		const std::uint32_t fit = bulk_bytes >= 4 ? (bulk_bytes - 4) / 12 : 0;
 		const std::uint32_t count = request.count < fit ? request.count : fit;
+		// Destroyed, not only forgotten. A window would otherwise keep drawing the old row where STEP no longer moves it.
+		for (AStaticMeshActor* actor : Spawned) {
+			if (IsValid(actor)) {
+				actor->Destroy();
+			}
+		}
 		Spawned.Reset();
 		FActorSpawnParameters params;
 		params.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AlwaysSpawn;

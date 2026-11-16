@@ -1,0 +1,575 @@
+% !TEX program = lualatex
+% latexmk -lualatex -outdir=docs/keynote/m1 -auxdir=build/keynote/m1 docs/keynote/m1/ueshm.tex
+\documentclass[aspectratio=169,11pt]{beamer}
+
+\usefonttheme{professionalfonts}
+\usepackage{fontspec}
+\defaultfontfeatures{Ligatures=TeX,Renderer=HarfBuzz}
+\setsansfont{IBMPlexSans}[
+  Extension=.otf,
+  UprightFont=*-Regular,
+  BoldFont=*-SemiBold,
+  ItalicFont=*-Italic,
+  BoldItalicFont=*-SemiBoldItalic,
+]
+\setmainfont{IBMPlexSans}[
+  Extension=.otf,
+  UprightFont=*-Regular,
+  BoldFont=*-SemiBold,
+  ItalicFont=*-Italic,
+  BoldItalicFont=*-SemiBoldItalic,
+]
+\setmonofont{IBMPlexMono}[
+  Extension=.otf,
+  UprightFont=*-Regular,
+  BoldFont=*-SemiBold,
+  Scale=0.92,
+  Ligatures=TeXOff,
+]
+\renewcommand{\familydefault}{\sfdefault}
+\frenchspacing
+\hyphenpenalty=10000
+\exhyphenpenalty=10000
+
+\usepackage{microtype}
+\usepackage{tikz}
+\usetikzlibrary{arrows.meta,calc,patterns.meta}
+
+\definecolor{ink}{HTML}{16202A}
+\definecolor{muted}{HTML}{56616C}
+\definecolor{faint}{HTML}{8C969F}
+\definecolor{rule}{HTML}{D8DDE2}
+\definecolor{night}{HTML}{111922}
+\definecolor{accent}{HTML}{C2562A}
+\definecolor{accentlt}{HTML}{E8946A}
+\definecolor{tool}{HTML}{1F4E79}
+\definecolor{eng}{HTML}{1D6B50}
+\definecolor{seghdr}{HTML}{E2E6EA}
+\definecolor{segcmd}{HTML}{CFE0F1}
+\definecolor{segrsp}{HTML}{CDEADC}
+\definecolor{segbulk}{HTML}{F0E3CC}
+\definecolor{segbulk2}{HTML}{E3CFA6}
+\definecolor{bulkdark}{HTML}{7A6440}
+\definecolor{fsize}{HTML}{D3DCE6}
+\definecolor{ftype}{HTML}{F8D9C4}
+\definecolor{fpad}{HTML}{E9EAEC}
+\definecolor{fade}{HTML}{F3F4F6}
+\definecolor{fid}{HTML}{E3DDF2}
+\definecolor{fpay}{HTML}{FAEFC8}
+\definecolor{fspeed}{HTML}{D6EBDF}
+\definecolor{record}{HTML}{D3DAE2}
+
+\newcommand{\titlefont}{\fontsize{20}{24}\selectfont\bfseries}
+\newcommand{\leadfont}{\fontsize{10.5}{14.5}\selectfont}
+\newcommand{\kickerfont}{\fontsize{7.5}{9}\selectfont\bfseries\addfontfeatures{LetterSpace=12}}
+\newcommand{\cardfont}{\fontsize{11}{13}\selectfont\bfseries}
+\newcommand{\labelfont}{\fontsize{9}{11}\selectfont\bfseries}
+\newcommand{\cellfont}{\fontsize{8.5}{10}\selectfont\bfseries}
+\newcommand{\bodyfont}{\fontsize{8.5}{11.5}\selectfont}
+\newcommand{\smallfont}{\fontsize{7.5}{9.5}\selectfont}
+\newcommand{\tinyfont}{\fontsize{7}{8.5}\selectfont}
+\newcommand{\headfont}{\fontsize{6.5}{8}\selectfont\bfseries\addfontfeatures{LetterSpace=10}}
+% Command-line flag prefix. Mono has TeX ligatures off, so this stays two hyphens.
+\newcommand{\dd}{\texttt{-{}-}}
+
+\tikzset{
+  every picture/.style={line cap=round, line join=round, x=1cm, y=1cm},
+  every node/.style={inner sep=0pt, text=ink},
+  arr/.style={-{Stealth[length=2mm,width=1.6mm]}, line width=0.8pt},
+  hatch/.style={pattern={Lines[angle=45,distance=2.4pt,line width=0.45pt]}, pattern color=faint!70},
+  sep/.style={white, line width=1.6pt},
+  tag/.style={font=\smallfont, text=muted, fill=white, inner xsep=2pt, inner ysep=1.5pt},
+}
+
+\setbeamertemplate{navigation symbols}{}
+\setbeamercolor{background canvas}{bg=white}
+\hypersetup{hidelinks,pdftitle={ueshm milestone 1}}
+
+% Everything is placed in page coordinates: (0,0) bottom left, (16,9) top right.
+\newenvironment{page}{%
+  \begin{tikzpicture}[remember picture, overlay]
+  \begin{scope}[shift={(current page.south west)}]%
+}{%
+  \end{scope}
+  \end{tikzpicture}%
+}
+
+% #1 kicker, #2 title, #3 lead
+\newcommand{\Chrome}[3]{%
+  \node[anchor=base west, font=\kickerfont, text=accent] at (1.0,8.2) {#1};
+  \node[anchor=base west, font=\titlefont] (title) at (1.0,7.45) {#2};
+  \node[anchor=north west, font=\leadfont, text=muted, text width=13.4cm, align=left]
+    at (1.0,7.0) {#3};
+  \node[anchor=base west, font=\tinyfont, text=faint] at (1.0,0.4) {ueshm\enspace\textperiodcentered\enspace milestone 1};
+  \node[anchor=base east, font=\tinyfont, text=faint] at (15.0,0.4)
+    {\insertframenumber\ / \inserttotalframenumber};
+}
+
+% #1,#2 lower left, #3,#4 upper right, #5 color, #6 name, #7 role, #8 items
+\newcommand{\Card}[8]{%
+  \begin{scope}
+    \clip[rounded corners=3pt] (#1,#2) rectangle (#3,#4);
+    \fill[white] (#1,#2) rectangle (#3,#4);
+    \fill[#5] (#1,{#4-0.07}) rectangle (#3,#4);
+  \end{scope}
+  \draw[rule, line width=0.6pt, rounded corners=3pt] (#1,#2) rectangle (#3,#4);
+  \node[anchor=base west, font=\cardfont, text=#5] at ({#1+0.3},{#4-0.5}) {#6};
+  \node[anchor=base west, font=\smallfont, text=muted] at ({#1+0.3},{#4-0.8}) {#7};
+  \pgfmathsetlengthmacro{\cardw}{(#3-#1-0.55)*1cm}%
+  \node[anchor=north west, font=\cardbody, text width=\cardw, align=left]
+    at ({#1+0.3},{#4-1.05}) {#8};
+}
+\newcommand{\cardbody}{\bodyfont}
+\newcommand{\itm}[1]{%
+  \hangindent=0.85em\hangafter=1\noindent
+  \makebox[0.85em][l]{\textcolor{faint}{\textbullet}}#1\par\vspace{2.2pt}}
+% Labeled line inside a card: #1 color, #2 label, #3 text.
+\newcommand{\say}[3]{%
+  \noindent\textcolor{#1}{\bfseries #2}\enspace #3\par\vspace{2.2pt}}
+% Inline legend swatch.
+\newcommand{\key}[1]{\textcolor{#1}{\rule[-0.15ex]{1.5ex}{1.5ex}}\hspace{0.45em}}
+\newcommand{\hatchkey}{\tikz[baseline=-0.15ex]\fill[hatch] (0,0) rectangle (1.5ex,1.5ex);\hspace{0.45em}}
+
+% Two-line label centered at (#1,#2).
+\newcommand{\Two}[4]{%
+  \node[anchor=base, font=\cellfont] at (#1,{#2+0.05}) {#3};
+  \node[anchor=base, font=\tinyfont, text=muted] at (#1,{#2-0.22}) {#4};
+}
+
+% Hex byte cell: #1 x, #2 y bottom, #3 fill, #4 text color, #5 byte
+\newcommand{\Hex}[5]{%
+  \fill[#3] (#1,#2) rectangle ({#1+0.46},{#2+0.4});
+  \node[anchor=base, font=\smallfont\ttfamily, text=#4] at ({#1+0.23},{#2+0.13}) {#5};
+}
+
+% One row of eight bytes at x 11.04, row label #1, y #2, bytes #3, fills #4.
+\newcommand{\HexRow}[4]{%
+  \node[anchor=base west, font=\tinyfont\ttfamily, text=faint] at (10.54,{#2+0.13}) {#1};
+  \foreach \b [count=\k from 0] in {#3} {
+    \pgfmathsetmacro{\hx}{11.04+\k*0.5}
+    \foreach \f [count=\j from 0] in {#4} {
+      \ifnum\j=\k \Hex{\hx}{#2}{\f}{ink}{\b}\fi
+    }
+  }
+}
+
+% Status tag to the right of the title: #1 color, #2 text.
+\newcommand{\Status}[2]{%
+  \node[anchor=west, draw=#1, line width=0.6pt, rounded corners=2pt, inner xsep=4pt, inner ysep=2.5pt,
+        font=\smallfont\bfseries, text=#1] at ($(title.base east)+(0.35,0.24)$) {#2};
+}
+
+\begin{document}
+
+% ---------------------------------------------------------------- title
+\begin{frame}[plain,noframenumbering]
+\begin{page}
+  \fill[night] (0,0) rectangle (16,9);
+  \node[anchor=base west, font=\kickerfont, text=accentlt] at (1.2,6.75)
+    {UNREAL ENGINE 5.8\quad\textperiodcentered\quad SHARED MEMORY\quad\textperiodcentered\quad MILESTONE 1};
+  \node[anchor=base west, font=\fontsize{58}{60}\selectfont\bfseries, text=white]
+    at (1.12,4.95) {ueshm};
+  \node[anchor=north west, font=\fontsize{13}{17.5}\selectfont, text=white!72!night,
+        text width=12.6cm, align=left] at (1.2,4.35)
+    {Both sides write bulk, the tool drives the engine clock one step
+     at a time, and a window shows the lockstep.};
+
+  \begin{scope}
+    \clip[rounded corners=3pt] (1.2,1.95) rectangle (14.8,2.45);
+    \fill[white!26!night] (1.2,1.95) rectangle (2.5,2.45);
+    \fill[tool!88!night] (2.5,1.95) rectangle (4.7,2.45);
+    \fill[eng!88!night] (4.7,1.95) rectangle (6.9,2.45);
+    \fill[bulkdark] (6.9,1.95) rectangle (10.85,2.45);
+    \fill[bulkdark!62!night] (10.85,1.95) rectangle (14.8,2.45);
+    \draw[night, line width=1.6pt] (2.5,1.95) -- (2.5,2.45) (4.7,1.95) -- (4.7,2.45)
+      (6.9,1.95) -- (6.9,2.45) (10.85,1.95) -- (10.85,2.45);
+  \end{scope}
+  \foreach \x/\t in {1.85/header, 3.6/command ring, 5.8/reply ring, 8.875/tool half, 12.825/engine half}
+    \node[anchor=base, font=\smallfont\bfseries, text=white] at (\x,2.13) {\t};
+  \foreach \x/\t/\a in {1.2/0/base west, 2.5/128/base, 4.7/65920/base, 6.9/131712/base,
+                        10.85/8454464/base, 14.8/16777216/base east}
+    \node[anchor=\a, font=\tinyfont\ttfamily, text=white!50!night] at (\x,1.63) {\t};
+  \node[anchor=base west, font=\smallfont, text=white!50!night] at (1.2,0.95)
+    {\texttt{uectl}, host tool\quad\textperiodcentered\quad
+     \texttt{UEShmBridge}, engine plugin\quad\textperiodcentered\quad
+     protocol version 2};
+\end{page}
+\end{frame}
+
+% ---------------------------------------------------------------- 1
+\begin{frame}[plain]
+\begin{page}
+  \Chrome{01\quad MILESTONE}{Four steps}
+    {Each step names what it built, what it refused, and the run that checked it.
+     \texttt{demo} did not change. It runs free and still prints \texttt{spawned 1000}.}
+
+  \renewcommand{\cardbody}{\smallfont}
+  \Card{1.0}{1.0}{4.3125}{5.55}{muted}{Spec set}{step 1\enspace\textperiodcentered\enspace docs}{%
+    \itm{\texttt{README.md} is the contract}
+    \itm{One fact, one file under \texttt{docs/}}
+    \itm{Each \texttt{constexpr} states its constraint}
+    \vspace{4pt}
+    \say{accent}{Refused}{a copied table}
+    \say{eng}{Checked}{by review}}
+  \Card{4.5625}{1.0}{7.875}{5.55}{bulkdark}{Split bulk}{step 2\enspace\textperiodcentered\enspace version 2}{%
+    \itm{Header stays 128 B}
+    \itm{Tool writes the low half, engine the high half}
+    \vspace{4pt}
+    \say{accent}{Refused}{any lock}
+    \say{eng}{Checked}{\texttt{ring\_empty}, \texttt{demo}}}
+  \Card{8.125}{1.0}{11.4375}{5.55}{tool}{Timestep}{step 3\enspace\textperiodcentered\enspace sync bit}{%
+    \itm{\texttt{STEP} sets the frame \texttt{dt}}
+    \itm{\texttt{STEP\_ACK} after the move}
+    \vspace{4pt}
+    \say{accent}{Refused}{an engine wait on the tool}
+    \say{eng}{Checked}{\texttt{stepped 10}. \texttt{\dd dt 2} fails}}
+  \Card{11.6875}{1.0}{15.0}{5.55}{eng}{Window}{step 4\enspace\textperiodcentered\enspace \texttt{\dd window}}{%
+    \itm{Renderer on}
+    \itm{An \texttt{AHUD} reads the header}
+    \vspace{4pt}
+    \say{accent}{Refused}{UMG and Slate}
+    \say{eng}{Checked}{\texttt{stepped 400}}
+    \say{accent}{Open}{no cube seen}}
+  \renewcommand{\cardbody}{\bodyfont}
+\end{page}
+\end{frame}
+
+% ---------------------------------------------------------------- 2
+\begin{frame}[plain]
+\begin{page}
+  \Chrome{02\quad MEMORY}{Bulk, split in two}
+    {Each half has one writer, and either side may read both. The ring that carries
+     the order is the fence for that half's bytes.}
+
+  \foreach \x/\t/\a in {1.0/0/base west, 2.3/128/base, 4.2/65920/base, 6.1/131712/base,
+                        10.55/8454464/base, 15.0/16777216/base east} {
+    \draw[faint, line width=0.5pt] (\x,5.15) -- (\x,5.25);
+    \node[anchor=\a, font=\smallfont\ttfamily, text=muted] at (\x,5.35) {\t};
+  }
+  \begin{scope}
+    \clip[rounded corners=3pt] (1.0,4.5) rectangle (15.0,5.15);
+    \fill[seghdr] (1.0,4.5) rectangle (2.3,5.15);
+    \fill[segcmd] (2.3,4.5) rectangle (4.2,5.15);
+    \fill[segrsp] (4.2,4.5) rectangle (6.1,5.15);
+    \fill[segbulk] (6.1,4.5) rectangle (10.55,5.15);
+    \fill[segbulk2] (10.55,4.5) rectangle (15.0,5.15);
+    \draw[sep] (2.3,4.5) -- (2.3,5.15) (4.2,4.5) -- (4.2,5.15) (6.1,4.5) -- (6.1,5.15) (10.55,4.5) -- (10.55,5.15);
+  \end{scope}
+  \foreach \x/\t in {1.65/header, 3.25/cmd ring, 5.15/rsp ring}
+    \node[anchor=base, font=\labelfont] at (\x,4.75) {\t};
+  \Two{8.325}{4.79}{tool half}{\texttt{8322752 B}}
+  \Two{12.775}{4.79}{engine half}{\texttt{8322752 B}}
+  \node[anchor=base east, font=\tinyfont, text=faint] at (15.0,4.25) {widths not to scale};
+
+  % tool half
+  \fill[tool] (1.0,3.92) rectangle (7.6,3.96);
+  \node[anchor=base west, font=\labelfont, text=tool] at (1.0,3.6) {Tool half\enspace\textcolor{muted}{\mdseries\smallfont written by \texttt{uectl}}};
+  \node[anchor=base east, font=\tinyfont\ttfamily, text=muted] at (7.6,3.6) {tool\_bulk\_off};
+  \foreach \b [count=\k from 0] in {00,00,c8,42} {
+    \pgfmathsetmacro{\hx}{1.0+\k*0.5}
+    \Hex{\hx}{2.95}{fpay}{ink}{\b}
+  }
+  \fill[hatch] (3.0,2.95) rectangle (7.6,3.35);
+  \node[tag, font=\tinyfont] at (5.3,3.15) {no order reads past the first four bytes};
+  \node[anchor=base, font=\tinyfont, text=muted] at (1.98,2.7) {\texttt{f32} speed, \texttt{100.f}};
+  \node[anchor=north west, font=\smallfont, text width=6.6cm, align=left] at (1.0,2.4) {%
+    \itm{\texttt{uectl step} writes it before the first \texttt{STEP}.}
+    \itm{Command ring publishes it: copy, then release \texttt{head}.}};
+
+  % engine half
+  \fill[eng] (8.4,3.92) rectangle (15.0,3.96);
+  \node[anchor=base west, font=\labelfont, text=eng] at (8.4,3.6) {Engine half\enspace\textcolor{muted}{\mdseries\smallfont written by the plugin}};
+  \node[anchor=base east, font=\tinyfont\ttfamily, text=muted] at (15.0,3.6) {ue\_bulk\_off};
+  \foreach \b/\f [count=\k from 0] in {e8/fsize,03/fsize,00/fsize,00/fsize,
+                                       00/fpay,00/fpay,00/fpay,00/fpay,
+                                       00/fid,00/fid,00/fid,00/fid} {
+    \pgfmathsetmacro{\hx}{8.4+\k*0.5}
+    \Hex{\hx}{2.95}{\f}{ink}{\b}
+  }
+  \draw[rule, line width=0.6pt, dash pattern=on 2pt off 2pt] (14.4,2.95) -- (15.0,2.95) (14.4,3.35) -- (15.0,3.35);
+  \foreach \x/\t in {9.38/count 1000, 11.38/x\textsubscript{0}, 13.38/y\textsubscript{0}}
+    \node[anchor=base, font=\tinyfont, text=muted] at (\x,2.7) {\t};
+  \node[anchor=north west, font=\smallfont, text width=6.6cm, align=left] at (8.4,2.4) {%
+    \itm{\texttt{DUMP}: \texttt{u32 count}, then \texttt{f32 x y z} per actor.}
+    \itm{Reply ring publishes it: read only after \texttt{DONE}.}};
+
+  \fill[accent!7] (1.0,0.85) rectangle (15.0,1.3);
+  \fill[accent] (1.0,0.85) rectangle (1.06,1.3);
+  \node[anchor=base west, font=\smallfont] at (1.25,1.02)
+    {No byte has two writers. No lock, no seqlock, no generation counter.};
+\end{page}
+\end{frame}
+
+% ---------------------------------------------------------------- 3
+\begin{frame}[plain]
+\begin{page}
+  \Chrome{03\quad MEMORY}{Header, version 2}
+    {Still 128 bytes, and offsets 0 through 44 did not move.
+     Ten new fields fill what was the version-1 pad.}
+
+  \foreach \i/\off/\name/\val/\atomic/\new in {
+      0/0/magic/{\texttt{0x48534555}, stored last}/1/0,
+      1/4/version/{\texttt{2}, was \texttt{1}}/0/1,
+      2/8/total\_size/{\texttt{16777216}}/0/0,
+      3/12/state/{\texttt{0}, \texttt{1}, or \texttt{2}}/1/0,
+      4/16/tool\_heartbeat/{+1 per \texttt{uectl} poll}/1/0,
+      5/20/ue\_heartbeat/{+1 per plugin tick}/1/0,
+      6/24/cmd\_off/{\texttt{128}}/0/0,
+      7/28/cmd\_bytes/{\texttt{65536}}/0/0,
+      8/32/rsp\_off/{\texttt{65920}}/0/0,
+      9/36/rsp\_bytes/{\texttt{65536}}/0/0,
+      10/40/bulk\_off/{\texttt{131712}}/0/0,
+      11/44/bulk\_bytes/{\texttt{16645504}}/0/0,
+      12/48/flags/{bit 0 is sync}/0/1,
+      13/52/frame/{completed steps}/1/1,
+      14/56/last\_cmd\_type/{type of the last pop}/0/1,
+      15/60/last\_cmd\_id/{low 32 bits of its id}/0/1,
+      16/64/last\_rsp\_type/{type of the last reply}/0/1,
+      17/68/last\_rsp\_id/{low 32 bits of its id}/0/1,
+      18/72/tool\_bulk\_off/{\texttt{131712}}/0/1,
+      19/76/tool\_bulk\_bytes/{\texttt{8322752}}/0/1,
+      20/80/ue\_bulk\_off/{\texttt{8454464}}/0/1,
+      21/84/ue\_bulk\_bytes/{\texttt{8322752}}/0/1} {
+    \pgfmathsetmacro{\cx}{1.0+mod(\i,4)*3.515}
+    \pgfmathsetmacro{\cy}{5.6-floor(\i/4)*0.64}
+    \ifnum\new=1
+      \fill[accent!11] (\cx,{\cy-0.58}) rectangle ({\cx+3.455},\cy);
+    \else
+      \fill[fade] (\cx,{\cy-0.58}) rectangle ({\cx+3.455},\cy);
+    \fi
+    \ifnum\atomic=1
+      \fill[accent] (\cx,{\cy-0.58}) rectangle ({\cx+0.06},\cy);
+    \fi
+    \node[anchor=base west, font=\tinyfont\ttfamily, text=muted] at ({\cx+0.2},{\cy-0.25}) {\off};
+    \ifnum\new=1
+      \node[anchor=base west, font=\cellfont\ttfamily] at ({\cx+0.62},{\cy-0.25}) {\name};
+    \else
+      \node[anchor=base west, font=\cellfont\ttfamily, text=muted] at ({\cx+0.62},{\cy-0.25}) {\name};
+    \fi
+    \node[anchor=base west, font=\tinyfont, text=muted] at ({\cx+0.62},{\cy-0.48}) {\val};
+  }
+  \fill[hatch] (8.03,{5.6-5*0.64-0.58}) rectangle (15.0,{5.6-5*0.64});
+  \node[tag, font=\tinyfont] at (11.515,{5.6-5*0.64-0.29}) {\texttt{88}\enspace\texttt{pad}, 40 bytes, zero};
+
+  \node[anchor=base west, font=\smallfont, text=muted] at (1.0,1.45)
+    {\key{fade}unchanged since version 1\qquad\key{accent!22}new or changed in version 2\qquad
+     \textcolor{accent}{\rule[-0.15ex]{0.5ex}{1.5ex}}\hspace{0.45em}\texttt{std::atomic<uint32\_t>}};
+  \node[anchor=base west, font=\smallfont, text=muted] at (1.0,1.0)
+    {\texttt{flags} is stored before \texttt{magic}. A version-1 plugin never stores \texttt{ue\_ready}, so a mixed pair fails at the ready wait.};
+\end{page}
+\end{frame}
+
+% ---------------------------------------------------------------- 4
+\begin{frame}[plain]
+\begin{page}
+  \Chrome{04\quad PROTOCOL}{STEP and STEP\_ACK}
+    {\texttt{STEP} is accepted only when \texttt{flags} bit 0 is set. Its ack is pushed
+     once the actors have moved, not when \texttt{STEP} is popped.}
+
+  % rules
+  \node[anchor=base west, font=\headfont, text=muted] at (1.0,5.45) {RULE};
+  \draw[ink, line width=0.6pt] (1.0,5.32) -- (9.4,5.32);
+  \foreach \r/\a/\b in {
+      0/Accepted/{\texttt{0 < dt <= 1}. Otherwise \texttt{ERR}, and no tick},
+      1/Mode/{sync bit set. Free-running answers \texttt{ERR}},
+      2/Batch/{\texttt{STEP} is the last record popped that loop},
+      3/Ack/{after the move and the release store of \texttt{frame}}} {
+    \pgfmathsetmacro{\ry}{4.98-\r*0.44}
+    \node[anchor=base west, font=\cellfont] at (1.0,\ry) {\a};
+    \node[anchor=base west, font=\smallfont] at (2.45,\ry) {\b};
+    \draw[rule, line width=0.5pt] (1.0,{\ry-0.16}) -- (9.4,{\ry-0.16});
+  }
+
+  % uectl step
+  \node[anchor=base west, font=\labelfont] at (1.0,2.95)
+    {\texttt{uectl step}\enspace\textcolor{muted}{\mdseries\smallfont after \texttt{ue\_ready}}};
+  \foreach \n/\t in {
+      1/{\texttt{SPAWN} 1000 at spacing 100, as \texttt{demo} does},
+      2/{write \texttt{100.f} at \texttt{tool\_bulk\_off}},
+      3/{\texttt{\dd count} steps. Each ack: \texttt{frame} is \(n\), \texttt{speed} is \texttt{100.f}},
+      4/{\texttt{DUMP}. Actor \(i\) is at \(100\,i + \mathit{count}\cdot\mathit{speed}\cdot\mathit{dt}\)},
+      5/{\texttt{QUIT}, then print \texttt{stepped} \(\mathit{count}\)}} {
+    \pgfmathsetmacro{\ny}{2.58-(\n-1)*0.33}
+    \fill[tool] (1.12,{\ny+0.085}) circle[radius=0.11];
+    \node[font=\tinyfont\bfseries, text=white] at (1.12,{\ny+0.085}) {\n};
+    \node[anchor=base west, font=\smallfont] at (1.35,\ny) {\t};
+  }
+
+  % bytes
+  \node[anchor=base west, font=\labelfont] at (10.54,5.45)
+    {\texttt{STEP}\enspace\textcolor{muted}{\mdseries\smallfont size 20, occupies 24}};
+  \HexRow{00}{4.82}{14,00,00,00,06,00,00,00}{fsize,fsize,fsize,fsize,ftype,ftype,fpad,fpad}
+  \HexRow{08}{4.37}{02,00,00,00,00,00,00,00}{fid,fid,fid,fid,fid,fid,fid,fid}
+  \HexRow{10}{3.92}{cd,cc,cc,3d,00,00,00,00}{fpay,fpay,fpay,fpay,fpad,fpad,fpad,fpad}
+  \node[anchor=base, font=\tinyfont, text=muted] at (12.02,3.67) {\texttt{dt} \texttt{0.1f}};
+  \node[anchor=base, font=\tinyfont, text=muted] at (14.02,3.67) {pad to 8};
+
+  \node[anchor=base west, font=\labelfont] at (10.54,3.1)
+    {\texttt{STEP\_ACK}\enspace\textcolor{muted}{\mdseries\smallfont byte 4 is \texttt{0x69}, type 105}};
+  \HexRow{00}{2.47}{18,00,00,00,69,00,00,00}{fsize,fsize,fsize,fsize,ftype,ftype,fpad,fpad}
+  \HexRow{08}{2.02}{02,00,00,00,00,00,00,00}{fid,fid,fid,fid,fid,fid,fid,fid}
+  \HexRow{10}{1.57}{01,00,00,00,00,00,c8,42}{fpay,fpay,fpay,fpay,fspeed,fspeed,fspeed,fspeed}
+  \node[anchor=base, font=\tinyfont, text=muted] at (12.02,1.32) {\texttt{frame} 1};
+  \node[anchor=base, font=\tinyfont, text=muted] at (14.02,1.32) {\texttt{speed} \texttt{100.f}};
+
+  \node[anchor=base east, font=\tinyfont, text=muted] at (15.0,0.85)
+    {\key{fsize}size\quad\key{ftype}type\quad\key{fpad}pad\quad\key{fid}id\quad\key{fpay}payload\quad\key{fspeed}speed};
+  \node[anchor=base west, font=\tinyfont, text=muted] at (1.0,0.85)
+    {Request types stay below 101. Reply types stay above \texttt{ERR} (104).};
+\end{page}
+\end{frame}
+
+% ---------------------------------------------------------------- 5
+\begin{frame}[plain]
+\begin{page}
+  \Chrome{05\quad TIMESTEP}{One loop under the sync clock}
+    {\texttt{UShmTimeStep} runs before the world tick, pops the command ring, and writes
+     the frame delta itself. It never waits on the tool.}
+  \Status{eng}{Implemented}
+
+  % loop phases
+  \foreach \i/\name/\sub/\f/\t in {
+      0/UpdateTimeStep/{pops; \texttt{STEP} sets \texttt{dt}}/segcmd/tool,
+      1/World tick/{actors tick with \texttt{dt}}/seghdr/ink,
+      2/Redraw/{\texttt{DrawHUD} runs here}/seghdr/ink,
+      3/FTSTicker/{heartbeat, no pop}/seghdr/ink,
+      4/OnEndFrame/{move, \texttt{frame}, ack}/segrsp/eng} {
+    \pgfmathsetmacro{\bx}{1.0+\i*2.845}
+    \fill[\f, rounded corners=2.5pt] (\bx,4.85) rectangle ({\bx+2.62},5.5);
+    \node[anchor=base west, font=\smallfont\bfseries, text=\t] at ({\bx+0.16},5.25) {\name};
+    \node[anchor=base west, font=\tinyfont, text=muted] at ({\bx+0.16},4.98) {\sub};
+  }
+  \foreach \i in {0,...,3} {
+    \pgfmathsetmacro{\ax}{1.0+\i*2.845+2.64}
+    \draw[arr, faint, line width=0.6pt] (\ax,5.175) -- ({\ax+0.19},5.175);
+  }
+
+  % timeline
+  \node[anchor=base east, font=\smallfont\ttfamily, text=muted] at (2.45,3.93) {uectl};
+  \node[anchor=base east, font=\smallfont, text=muted] at (2.45,2.83) {engine};
+  \node[anchor=base east, font=\tinyfont, text=faint] at (15.0,4.25) {time\enspace\textrightarrow};
+  \draw[rule, line width=0.6pt] (2.7,4.0) -- (15.0,4.0);
+  \fill[hatch] (2.7,2.6) rectangle (15.0,3.2);
+  \foreach \a/\b in {4.5/5.7, 7.3/8.5, 10.5/11.7} {
+    \fill[white] ({\a-0.03},2.6) rectangle ({\b+0.03},3.2);
+    \fill[segrsp!60, rounded corners=2.5pt] (\a,2.6) rectangle (\b,3.2);
+    \fill[tool, rounded corners=2pt] ({\a+0.05},2.65) rectangle ({\a+0.5},3.15);
+    \node[anchor=base, font=\tinyfont\ttfamily, text=white] at ({\a+0.275},2.85) {dt};
+    \fill[eng] ({\b-0.12},2.65) rectangle ({\b-0.05},3.15);
+    \draw[arr, tool, line width=0.7pt] ({\a-0.35},3.93) .. controls ({\a-0.35},3.55) and (\a,3.6) .. (\a,3.27);
+    \fill[tool] ({\a-0.35},4.0) circle[radius=0.07];
+    \node[anchor=base, font=\tinyfont\ttfamily, text=tool] at ({\a-0.35},4.13) {STEP};
+    \draw[arr, eng, line width=0.7pt] ({\b-0.085},3.27) .. controls ({\b-0.085},3.6) and ({\b+0.3},3.55) .. ({\b+0.3},3.93);
+    \node[anchor=base, font=\tinyfont\ttfamily, text=eng] at ({\b+0.3},4.13) {ack};
+  }
+  \foreach \x in {3.6,9.5,13.35}
+    \node[tag, font=\tinyfont, fill=white] at (\x,2.9) {dt 0, paused};
+
+  \node[anchor=base west, font=\tinyfont, text=muted] at (2.7,2.25)
+    {\key{segrsp}step loop: delta from the record\qquad
+     \hatchkey idle loop: up to 33 ms, in 2 ms slices\qquad
+     \textcolor{eng}{\rule[-0.15ex]{0.5ex}{1.5ex}}\hspace{0.45em}end of frame};
+
+  \fill[accent!7] (1.0,0.85) rectangle (15.0,1.8);
+  \fill[accent] (1.0,0.85) rectangle (1.06,1.8);
+  \node[anchor=north west, font=\smallfont, text width=13.6cm, align=left] at (1.25,1.66) {%
+    The tool waits for \texttt{STEP\_ACK}. The engine waits only for its own short sleep. A wait on the
+    tool inside \texttt{UpdateTimeStep} would deadlock, because the ack comes from the frame that wait holds.
+    \texttt{PING}, \texttt{DUMP}, and \texttt{QUIT} are served on idle loops.};
+\end{page}
+\end{frame}
+
+% ---------------------------------------------------------------- 6
+\begin{frame}[plain]
+\begin{page}
+  \Chrome{06\quad WINDOW}{Window and HUD}
+    {\texttt{\dd window} keeps the orders and turns the renderer on. The HUD is an \texttt{AHUD}
+     drawn with \texttt{UCanvas}. It reads the header and never pops a ring.}
+
+  \node[anchor=base west, font=\labelfont] at (1.0,5.4) {Headless};
+  \fill[night, rounded corners=2.5pt] (1.0,4.72) rectangle (8.6,5.2);
+  \node[anchor=base west, font=\smallfont\ttfamily, text=white] at (1.2,4.9)
+    {UnrealEditor-Cmd \dots\ -game \textcolor{accentlt}{-nullrhi -unattended} \dots};
+  \node[anchor=base west, font=\labelfont] at (1.0,4.3) {\texttt{\dd window}\enspace\textcolor{muted}{\mdseries\smallfont macOS}};
+  \fill[night, rounded corners=2.5pt] (1.0,3.62) rectangle (8.6,4.1);
+  \node[anchor=base west, font=\smallfont\ttfamily, text=white] at (1.2,3.8)
+    {UnrealEditor.app/\dots/UnrealEditor \dots\ -game \dots};
+
+  \node[anchor=north west, font=\smallfont, text width=7.6cm, align=left] at (1.0,3.3) {%
+    \itm{\texttt{UnrealEditor-Cmd} cannot become the key process. The app bundle can.}
+    \itm{Every launch passes \texttt{t.IdleWhenNotForeground 0}.}
+    \itm{The cube mesh loads only when the process can render.}};
+
+  \fill[night, rounded corners=3pt] (9.3,1.55) rectangle (15.0,5.55);
+  \foreach \i/\t/\hl in {
+      0/{state 1}/0, 1/{tool 2223}/0, 2/{ue 264}/0, 3/{flags 1}/0, 4/{frame 263}/1,
+      5/{last\_cmd 6 265}/0, 6/{last\_rsp 105 264}/0, 7/{step\_dt 0.100}/0,
+      8/{render 14.6}/1, 9/{sim 10.0}/1,
+      10/{step 257 frame}/0, 11/{step 258 frame}/0, 12/{step 259 frame}/0, 13/{step 260 frame}/0,
+      14/{step 261 frame}/0, 15/{step 262 frame}/0, 16/{step 263 frame}/0, 17/{step 264 frame}/0} {
+    \pgfmathsetmacro{\ly}{5.27-\i*0.21}
+    \ifnum\hl=1
+      \node[anchor=base west, font=\tinyfont\ttfamily, text=accentlt] at (9.55,\ly) {\t};
+    \else
+      \node[anchor=base west, font=\tinyfont\ttfamily, text=white!85!night] at (9.55,\ly) {\t};
+    \fi
+  }
+  \foreach \i/\t in {4/last completed step, 8/present rate, 9/\texttt{1 / dt} of that step, 13.5/kept in the plugin}
+    \node[anchor=base west, font=\tinyfont, text=white!55!night] at (12.3,{5.27-\i*0.21}) {\t};
+  \node[anchor=base west, font=\tinyfont, text=muted] at (9.3,1.25)
+    {From a capture: macOS, \texttt{step \dd window}, frame 263.};
+
+  \draw[accent, line width=0.6pt, rounded corners=2.5pt] (1.0,0.85) rectangle (8.6,1.35);
+  \node[anchor=base west, font=\smallfont] at (1.2,1.03)
+    {\textcolor{accent}{\bfseries Open}\enspace The world behind the HUD draws black. No cube seen.};
+\end{page}
+\end{frame}
+
+% ---------------------------------------------------------------- 7
+\begin{frame}[plain]
+\begin{page}
+  \Chrome{07\quad CHECKS}{What was run}
+    {Engine runs by hand on macOS, against the rebuilt plugin. CI runs the five C++ tests
+     on Linux, macOS, and Windows, and never launches the engine.}
+
+  \fill[night, rounded corners=3pt] (1.0,0.85) rectangle (8.6,5.55);
+  \foreach \i/\t/\kind in {
+      0/{\$ ctest -{}-test-dir build}/0,
+      1/{100\% tests passed out of 5}/1,
+      2/{\$ uectl demo \dots}/0,
+      3/{spawned 1000}/1,
+      4/{\$ uectl step -{}-dt 0.1 -{}-count 10 \dots}/0,
+      5/{stepped 10}/1,
+      6/{\$ uectl step -{}-dt 2 -{}-count 1 \dots}/0,
+      7/{step failed\quad exit 1}/2,
+      8/{\$ uectl ping -{}-sync \dots}/0,
+      9/{pong 55aa55aa55aa55aa}/1,
+      10/{\$ uectl step -{}-dt 0.1 -{}-count 400 -{}-window \dots}/0,
+      11/{stepped 400}/1} {
+    \pgfmathsetmacro{\ty}{5.15-\i*0.36}
+    \ifcase\kind
+      \node[anchor=base west, font=\smallfont\ttfamily, text=white!62!night] at (1.25,\ty) {\t};
+    \or
+      \node[anchor=base west, font=\smallfont\ttfamily, text=white] at (1.25,\ty) {\t};
+    \or
+      \node[anchor=base west, font=\smallfont\ttfamily, text=accentlt] at (1.25,\ty) {\t};
+    \fi
+  }
+
+  \fill[eng] (9.2,5.51) rectangle (15.0,5.55);
+  \node[anchor=base west, font=\labelfont, text=eng] at (9.2,5.2) {Fixed in review};
+  \node[anchor=north west, font=\smallfont, text width=5.8cm, align=left] at (9.2,5.0) {%
+    \itm{\texttt{render} times each loop on the wall clock. It used to read the same as \texttt{sim}.}
+    \itm{The step position check computes in double, with \texttt{f32} slack.}
+    \itm{\texttt{SPAWN} destroys the previous row instead of forgetting it.}};
+
+  \fill[accent] (9.2,2.61) rectangle (15.0,2.65);
+  \node[anchor=base west, font=\labelfont, text=accent] at (9.2,2.3) {Not covered};
+  \node[anchor=north west, font=\smallfont, text width=5.8cm, align=left] at (9.2,2.1) {%
+    \itm{An engine run on Windows or Linux.}
+    \itm{The cubes on screen.}
+    \itm{Any engine run in CI.}};
+\end{page}
+\end{frame}
+
+\end{document}

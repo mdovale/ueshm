@@ -42,7 +42,7 @@ void NoteCommand(std::uint16_t type, std::uint64_t id, const char* result);
 // The dt of a STEP whose actors have already moved. Sim rate stays 0 until this runs.
 void NoteCompletedStep(float dt);
 
-// Samples 1/FApp::GetDeltaTime when that delta is positive. A 0-delta idle loop is not stored.
+// Samples the wall-clock time since the previous call. The first call only sets the start.
 void NoteRenderDelta();
 
 // Average of the samples NoteRenderDelta kept. 0 if none.

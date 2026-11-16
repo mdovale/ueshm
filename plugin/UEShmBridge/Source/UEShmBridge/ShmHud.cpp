@@ -54,7 +54,7 @@ void AShmHud::DrawHUD() {
 
 	float y = 16.f;
 	const float x = 16.f;
-	// Shadow then light text. The default view is a bright sky, and unshadowed white disappears on it.
+	// Shadow then light text, so the lines stay readable whatever the world draws behind them.
 	auto line = [&](const FString& text) {
 		Canvas->SetDrawColor(0, 0, 0, 255);
 		Canvas->DrawText(font, text, x + 1.f, y + 1.f);

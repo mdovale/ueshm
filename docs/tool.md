@@ -55,7 +55,7 @@ If the child exits during a wait, the tool prints `editor exited <code>` and ret
 
 Ids start at 1 and increase by 1 for each request, including `QUIT`.
 
-## Commands that run today
+## Commands
 
 `launch` prints the logical name, flushes stdout, and polls until the child exits. It sends nothing. Exit 0 only if the child exits 0.
 
@@ -78,12 +78,12 @@ It prints `spawned 1000`. The position check is the acceptance test for the bulk
 1. `SPAWN` with count 1000 and spacing 100. `spawned` must be 1000.
 2. Writes `100.f` at the first four bytes of the tool half.
 3. Sends `--count` steps of `--dt`. Each reply must be `STEP_ACK` whose `frame` is the step index starting at 1, whose `speed` is `100.f`, and whose `frame` matches the header. `dt <= 0` or `dt > 1` comes back as `ERR` and the tool prints `step failed`.
-4. `DUMP`. The byte count and the actor count match `demo`. Actor `i` must satisfy `|x - (i * 100 + count * speed * dt)| <= 0.01` and `y == z == 0`.
+4. `DUMP`. The byte count and the actor count match `demo`. With `want = i * 100 + count * speed * dt` computed in double, actor `i` must satisfy `|x - want| <= 0.01 + |want| * FLT_EPSILON` and `y == z == 0`. The second term covers the `f32` rounding `DUMP` applies. Above 2^18 cm, half an `f32` step is already larger than 0.01.
 5. Prints `stepped <count>`, then `QUIT`.
 
 A bad frame prints `step frame`. A bad speed prints `step speed`. Spawn, dump, quit, and exit failures use the same lines as `demo`.
 
-`--window` on `step` sends the same orders with the renderer left on. Between steps the picture is still. A step moves the cubes by `speed * dt`. `launch --window` sends nothing and shows the idle world until the process exits. The HUD and the cube are `docs/plugin.md`.
+`--window` on `step` sends the same orders with the renderer left on. Between steps nothing moves. A step moves the actors by `speed * dt`, and the HUD frame line counts it. `launch --window` sends nothing and shows the idle world until the process exits. The HUD, the cube, and what the window shows today are `docs/plugin.md`.
 
 `--sync` on `ping`, `exec`, `demo`, and `launch` sets the same bit and does not send `STEP`. Those commands still get their replies from the idle drain. `demo --sync` still expects the spawn positions, because nothing stepped. `demo` without `--sync` does not set the bit and does not write the tool half.
 

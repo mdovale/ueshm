@@ -44,10 +44,12 @@ void SetWorldPaused(UWorld* world, bool paused) {
 
 }  // namespace
 
+// Region base. Call before SetCustomTimeStep. A null base leaves the engine clock in place.
 void UShmTimeStep::Attach(void* InBase) {
 	Base = InBase;
 }
 
+// Hook the end-of-frame callback. False without a base, and SetCustomTimeStep reports that.
 bool UShmTimeStep::Initialize(UEngine* /*InEngine*/) {
 	if (Base == nullptr) {
 		return false;
@@ -58,6 +60,7 @@ bool UShmTimeStep::Initialize(UEngine* /*InEngine*/) {
 	return true;
 }
 
+// Drop the end-of-frame hook. An ack still owed is not sent.
 void UShmTimeStep::Shutdown(UEngine* /*InEngine*/) {
 	if (EndFrameHandle.IsValid()) {
 		FCoreDelegates::OnEndFrame.Remove(EndFrameHandle);
@@ -65,6 +68,7 @@ void UShmTimeStep::Shutdown(UEngine* /*InEngine*/) {
 	}
 }
 
+// Closed without a base, Synchronized otherwise. The tool, not a genlock source, sets the pace.
 ECustomTimeStepSynchronizationState UShmTimeStep::GetSynchronizationState() const {
 	if (Base == nullptr) {
 		return ECustomTimeStepSynchronizationState::Closed;
@@ -72,6 +76,7 @@ ECustomTimeStepSynchronizationState UShmTimeStep::GetSynchronizationState() cons
 	return ECustomTimeStepSynchronizationState::Synchronized;
 }
 
+// False once ue_ready, after this call has written FApp's delta. True before that so map load keeps the engine clock.
 bool UShmTimeStep::UpdateTimeStep(UEngine* /*InEngine*/) {
 	if (Base == nullptr) {
 		return true;
@@ -160,6 +165,7 @@ bool UShmTimeStep::UpdateTimeStep(UEngine* /*InEngine*/) {
 	return false;
 }
 
+// Only for a STEP consumed this loop: move the actors, release-store frame, push STEP_ACK.
 void UShmTimeStep::OnEndFrame() {
 	if (!bAckOwed || Base == nullptr) {
 		return;

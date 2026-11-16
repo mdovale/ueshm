@@ -16,7 +16,7 @@ constexpr std::uint32_t kVersion = 2;
 constexpr std::uint32_t kFlagSync = 1u;
 // Both sides map the header as this many bytes. The command ring starts on the next byte.
 constexpr std::uint32_t kHeaderBytes = 128;
-// Create size. Must cover the header, both rings, and a bulk dump of 1000 positions.
+// Create size. Must cover the header, both rings, and an engine half that holds a dump of 1000 positions.
 constexpr std::uint32_t kDefaultBytes = 16u * 1024u * 1024u;
 // Largest payload a ring record may carry. Larger results belong in the bulk area.
 constexpr std::uint32_t kMaxPayload = 1024;
@@ -177,6 +177,7 @@ struct Message {
 
 // Zero the mapping, fill the header, both rings, and the bulk halves, then release-store magic.
 // `flags` is stored before that release. Bit 0 set makes the plugin take the sync clock.
+// False for a null base or a mapping shorter than kBulkOff. magic is not stored then.
 inline bool InitRegion(void* base, std::uint32_t total_size, std::uint32_t flags = 0) {
 	if (base == nullptr || total_size < kBulkOff) {
 		return false;

@@ -27,6 +27,8 @@ The tool creates the region and the child. The plugin only opens the region. Byt
 | `docs/plugin.md` | Module startup, the ticker, and the version-2 timestep and HUD |
 | `docs/build.md` | CMake, the five tests, the plugin build, CI, failed runs |
 | `WINDOWS.md` | Windows install and the Visual Studio debugger |
+| `docs/M1.md` | Milestone 1: each step, what it refused, and the run that checked it |
+| `docs/keynote/m0`, `docs/keynote/m1` | Slides for each milestone. `make` in that directory builds the PDF |
 
 ## Build and run
 
@@ -67,7 +69,7 @@ Run, again with an absolute project path:
 ./build/uectl launch --engine "<UE>" --project "<abs>/project/ueshm.uproject"
 ```
 
-`--map` defaults to `/Engine/Maps/Entry`. `demo` prints `spawned 1000` and exits 0. `step --dt 0.1 --count 10` prints `stepped 10` and exits 0. `step` with `--window` prints the same line; the window shows the cubes and a HUD whose frame line reaches 10. `ping` prints `pong <nonce>`. `exec` prints `ok 1`. `launch` prints the shared-memory name and waits until the process exits. The engine log contains `ueshm ready`.
+`--map` defaults to `/Engine/Maps/Entry`. `demo` prints `spawned 1000` and exits 0. `step --dt 0.1 --count 10` prints `stepped 10` and exits 0. `step` with `--window` prints the same line; the window shows a HUD whose frame line reaches 10. The cubes do not show yet; `docs/plugin.md` has what was seen. `ping` prints `pong <nonce>`. `exec` prints `ok 1`. `launch` prints the shared-memory name and waits until the process exits. The engine log contains `ueshm ready`.
 
 `demo` exits nonzero if the ready wait exceeds 60 s, a reply exceeds 10 s, the process crashes, `spawned != 1000`, or a position check fails. The engine demo has been run on macOS. CI runs the C++ tests on Linux, macOS, and Windows. Those runners do not install the engine.
 

@@ -65,7 +65,7 @@ private:
 	// Sync mode does not pop. The custom timestep is the only consumer then.
 	bool Tick(float)
 	{
-		// Before the header check. Startup frames still count, and a 0-delta idle loop does not.
+		// Before the header check. This callback runs once per engine loop, idle or stepped.
 		NoteRenderDelta();
 		auto* header = reinterpret_cast<Header*>(Region.Data());
 		if (header->magic.load(std::memory_order_acquire) != kMagic || header->version != kVersion) {

@@ -12,7 +12,7 @@ The project is content-only. `project/ueshm.uproject` sets `AdditionalPluginDire
 
 With a name, it `ShmRegion::Open`s the logical name. Failure logs `open failed` and registers no ticker. Success registers an `FTSTicker` on the core ticker.
 
-`ShutdownModule` removes the ticker if it was registered.
+`ShutdownModule` removes the ticker if it was registered, and clears the custom timestep if this session installed one.
 
 ## Tick
 
@@ -20,7 +20,7 @@ The ticker runs on the game thread. In free-running mode it runs after that iter
 
 Each callback:
 
-1. Records a render-rate sample from `FApp::GetDeltaTime()` when that delta is greater than 0. A 0-delta idle loop is not a sample. The average is the render rate in the HUD section.
+1. Records a render-rate sample: the wall-clock time since the previous callback. The callback runs once per engine loop, idle or stepped. The average is the render rate in the HUD section.
 2. Acquire-loads `magic`. If it is not `UESH`, or `version` is not 2, returns and stays registered. The header is not published yet, or it is the wrong layout.
 3. Relaxed-increments `ue_heartbeat`.
 4. On the first matching header, sets `t.IdleWhenNotForeground` to 0. The default is already 0. The cvar is cheat, so a project ini entry is refused and only the engine's `ConsoleVariables.ini` may set it that way. If the value were 1, an unfocused `-game` process would skip the world tick after `STEP` had been consumed, and the end-of-frame ack would report a tick that did not happen.
@@ -32,7 +32,7 @@ Each callback:
 10. If sync is set, returns without popping.
 11. Otherwise pops up to 64 commands. A failed pop ends the drain. A failed decode ends the drain. `DispatchCommand` returning false ends the drain. `QUIT` is the command that returns false, and it does so only after its `ACK` is pushed.
 
-There is no blocking primitive. The callback always returns true, so the ticker stays registered until shutdown. Shutdown also clears the custom timestep when this session installed one.
+There is no blocking primitive. The callback always returns true, so the ticker stays registered until shutdown.
 
 ## Handlers
 
@@ -42,7 +42,7 @@ All of these run on the game thread, inside the drain. Replies are pushed before
 
 `CONSOLE` copies at most 1024 payload bytes, writes a NUL, and calls `GEngine->Exec` on the game world. `ACK` carries `u32` 1 or 0.
 
-`SPAWN` reads `u32 count` and `f32 spacing`. The count is capped with `(ue_bulk_bytes - 4) / 12`. Previous actors are dropped. Each new actor is an `AStaticMeshActor` spawned at the origin with `AlwaysSpawn`, set movable, then moved to `(i * spacing, 0, 0)`. `ACK` carries how many were spawned. When `FApp::CanEverRender()` is true, the mesh is `/Engine/BasicShapes/Cube`, set after the component is made movable and before the location. Headless spawn does not call `LoadObject`. The cube is loaded once, before `state` becomes 1. A missing asset logs `ueshm cube missing`. Actor 0's cube is centered on the origin and fills the default eye point, so a windowed spawn then moves the pawn once to (-400, -600, 250) and aims it at (200, 0, 0). Steps do not move the pawn. The position still exists under `-nullrhi`. `--window` is the launch that can render; the flag is `docs/tool.md`.
+`SPAWN` reads `u32 count` and `f32 spacing`. The count is capped with `(ue_bulk_bytes - 4) / 12`. Previous actors are destroyed, so a window does not keep drawing a row that `STEP` no longer moves. Each new actor is an `AStaticMeshActor` spawned at the origin with `AlwaysSpawn`, set movable, then moved to `(i * spacing, 0, 0)`. `ACK` carries how many were spawned. When `FApp::CanEverRender()` is true, the mesh is `/Engine/BasicShapes/Cube`, set after the component is made movable and before the location. Headless spawn does not call `LoadObject`. The cube is loaded once, before `state` becomes 1. A missing asset logs `ueshm cube missing`. Actor 0's cube is centered on the origin and fills the default eye point, so a windowed spawn then moves the pawn once to (-400, -600, 250) and aims it at (200, 0, 0). Steps do not move the pawn. The position still exists under `-nullrhi`. `--window` is the launch that can render; the flag is `docs/tool.md`.
 
 `DUMP` computes `4 + count * 12`. When that fits in the engine half, it writes `u32 count` and then `count` triples of `f32` at `ue_bulk_off`, then pushes `DONE` with that byte count. When it does not fit, the handler falls through to `ERR` and does not write the blob. The handler does not store into the tool half.
 
@@ -78,4 +78,6 @@ The lines use `UCanvas` and `GEngine->GetSmallFont()`. In order: `state`, both h
 
 The transcript lives in the module. A popped ring record is gone. Each line is the command name, the id, and one of `ok`, `spawned`, `frame`, `err`. `PING`, a console `ACK` of 1, `DUMP`, and `QUIT` are `ok`. A console `ACK` of 0 is `err`. `SPAWN` is `spawned`. A completed `STEP` is `frame`, recorded from the end-of-frame callback after the actors move. A rejected `STEP` is `err`, recorded from the drain. The header mirror is the shared-memory state. The transcript is local context under it.
 
-`render` is the average of `1 / FApp::GetDeltaTime()` over the last 32 ticker samples whose delta is greater than 0. `sim` is `1 / dt` of the last completed `STEP`, or 0 if none has completed. The labels are different numbers. A 0-delta idle loop is not stored in `render` and is not shown as `sim`.
+`render` is the average of `1 / interval` over the last 32 wall-clock intervals between ticker callbacks. Each loop presents once, so that is the present rate in both clock modes. It is not `FApp::GetDeltaTime()`: under the sync clock that delta is 0 on idle loops and the step `dt` otherwise, and averaging it would make `render` equal `sim`. `sim` is `1 / dt` of the last completed `STEP`, or 0 if none has completed. The labels are different numbers.
+
+Open: in display captures of a macOS `step --window` run, the HUD drew over a black world and no cube was visible. A movable directional light spawned on the windowed path did not change that, so it is not in the tree. The positions are right, because that run's `DUMP` check passes. The next checks are whether Entry gives the controller a pawn, and where the view actually is. `HighResShot` cannot be sent as `CONSOLE`: `GEngine->Exec` does not reach the viewport client.
